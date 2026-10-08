@@ -90,6 +90,7 @@ function Home({ email }: { email: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [prefs, setPrefs] = useState<Prefs>(() => loadLocalPrefs() ?? DEFAULT_PREFS);
+  const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -100,6 +101,7 @@ function Home({ email }: { email: string }) {
       .finally(() => alive && setLoading(false));
     fetchPrefs().then((p) => {
       if (alive && p) {
+        prefsRef.current = p;
         setPrefs(p);
         saveLocalPrefs(p);
       }
@@ -109,11 +111,17 @@ function Home({ email }: { email: string }) {
     };
   }, []);
 
-  function update(next: Prefs) {
+  function apply(next: Prefs) {
+    prefsRef.current = next;
     setPrefs(next);
     saveLocalPrefs(next);
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => void putPrefs(next), 500);
+  }
+
+  // 用 ref 取最新值，避免連續操作時用到過期的 state。
+  function update(patch: (p: Prefs) => Prefs) {
+    apply(patch(prefsRef.current));
   }
 
   const bars = data?.bars ?? [];
@@ -162,22 +170,23 @@ function Home({ email }: { email: string }) {
 
       <div className="toolbar">
         <span className="toolbar-label">均線</span>
-        {MA_PERIODS.map((p) => {
-          const on = !!prefs.ma[String(p)];
+        {MA_PERIODS.map((period) => {
+          const key = String(period);
+          const on = !!prefs.ma[key];
           return (
             <label
-              key={p}
+              key={period}
               className="chk"
-              style={{ color: on ? MA_COLORS[p] : "var(--muted)" }}
+              style={{ color: on ? MA_COLORS[period] : "var(--muted)" }}
             >
               <input
                 type="checkbox"
                 checked={on}
                 onChange={() =>
-                  update({ ...prefs, ma: { ...prefs.ma, [String(p)]: !on } })
+                  update((p) => ({ ...p, ma: { ...p.ma, [key]: !p.ma[key] } }))
                 }
               />
-              MA{p}
+              MA{period}
             </label>
           );
         })}
@@ -188,7 +197,7 @@ function Home({ email }: { email: string }) {
           <input
             type="checkbox"
             checked={prefs.vol}
-            onChange={() => update({ ...prefs, vol: !prefs.vol })}
+            onChange={() => update((p) => ({ ...p, vol: !p.vol }))}
           />
           成交量
         </label>
@@ -196,7 +205,7 @@ function Home({ email }: { email: string }) {
           <input
             type="checkbox"
             checked={prefs.macd}
-            onChange={() => update({ ...prefs, macd: !prefs.macd })}
+            onChange={() => update((p) => ({ ...p, macd: !p.macd }))}
           />
           MACD
         </label>
@@ -204,7 +213,7 @@ function Home({ email }: { email: string }) {
           <input
             type="checkbox"
             checked={prefs.kdj}
-            onChange={() => update({ ...prefs, kdj: !prefs.kdj })}
+            onChange={() => update((p) => ({ ...p, kdj: !p.kdj }))}
           />
           KD
         </label>
@@ -216,7 +225,7 @@ function Home({ email }: { email: string }) {
             <button
               key={label}
               className={prefs.range === value ? "active" : ""}
-              onClick={() => update({ ...prefs, range: value })}
+              onClick={() => update((p) => ({ ...p, range: value }))}
             >
               {label}
             </button>
