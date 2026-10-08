@@ -80,6 +80,8 @@ const CHART_STYLES: DeepPartial<Styles> = {
 registerOverlay({
   name: "noteDot",
   totalStep: 2,
+  // 可點擊但不要被拖動（覆寫預設拖曳行為）
+  performEventPressedMove: () => {},
   createPointFigures: ({ coordinates }) => [
     {
       type: "circle",
