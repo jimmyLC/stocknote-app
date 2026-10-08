@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getAuth } from "./auth";
 import { cachedJson } from "./cache";
 import { getDailyOHLCV } from "./market";
+import { ensureSecurities, searchSecurities } from "./securities";
 import type { Env } from "./types";
 
 type Variables = { userId: string };
@@ -68,6 +69,74 @@ app.put("/api/prefs", async (c) => {
   )
     .bind(c.get("userId"), JSON.stringify(body.prefs ?? {}), Date.now())
     .run();
+  return c.json({ ok: true });
+});
+
+// 證券搜尋（代號或名稱）＋收藏清單
+app.get("/api/securities", async (c) => {
+  await ensureSecurities(c.env);
+  const results = await searchSecurities(c.env, c.req.query("q") ?? "");
+  return c.json({ results });
+});
+
+app.get("/api/favorites", async (c) => {
+  await ensureSecurities(c.env);
+  const { results } = await c.env.DB.prepare(
+    `select f.id, f.market, f.symbol, f.sort_order as sortOrder,
+            coalesce(s.name, f.symbol) as name, coalesce(s.kind, 'stock') as kind
+     from favorites f
+     left join securities s on s.market = f.market and s.symbol = f.symbol
+     where f.user_id = ?
+     order by f.sort_order`,
+  )
+    .bind(c.get("userId"))
+    .all();
+  return c.json({ favorites: results });
+});
+
+app.post("/api/favorites", async (c) => {
+  const body = await c.req
+    .json<{ market?: string; symbol?: string }>()
+    .catch(() => ({}) as { market?: string; symbol?: string });
+  const market = (body.market ?? "TW").toUpperCase();
+  const symbol = String(body.symbol ?? "").trim();
+  if (!symbol) return c.json({ error: "symbol required" }, 400);
+  const userId = c.get("userId");
+  const max = await c.env.DB.prepare(
+    "select coalesce(max(sort_order), -1) as m from favorites where user_id = ?",
+  )
+    .bind(userId)
+    .first<{ m: number }>();
+  await c.env.DB.prepare(
+    `insert into favorites (id, user_id, market, symbol, sort_order, created_at)
+     values (?, ?, ?, ?, ?, ?)
+     on conflict(user_id, market, symbol) do nothing`,
+  )
+    .bind(crypto.randomUUID(), userId, market, symbol, (max?.m ?? -1) + 1, Date.now())
+    .run();
+  return c.json({ ok: true });
+});
+
+app.delete("/api/favorites/:id", async (c) => {
+  await c.env.DB.prepare("delete from favorites where id = ? and user_id = ?")
+    .bind(c.req.param("id"), c.get("userId"))
+    .run();
+  return c.json({ ok: true });
+});
+
+app.patch("/api/favorites/order", async (c) => {
+  const body = await c.req
+    .json<{ ids?: string[] }>()
+    .catch(() => ({}) as { ids?: string[] });
+  const userId = c.get("userId");
+  const stmts = (body.ids ?? []).map((id, i) =>
+    c.env.DB.prepare("update favorites set sort_order = ? where id = ? and user_id = ?").bind(
+      i,
+      id,
+      userId,
+    ),
+  );
+  if (stmts.length) await c.env.DB.batch(stmts);
   return c.json({ ok: true });
 });
 

@@ -117,7 +117,15 @@ function applyPane(chart: Chart, enabled: boolean, pane: Pane) {
  * klinecharts v10：K線 + 均線 + 成交量 + MACD + KD。
  * 外層刻意保持薄，將來換圖表庫只改這裡。
  */
-export default function PriceChart({ bars, prefs }: { bars: Bar[]; prefs: Prefs }) {
+export default function PriceChart({
+  bars,
+  prefs,
+  symbol,
+}: {
+  bars: Bar[];
+  prefs: Prefs;
+  symbol: string;
+}) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
   const dataRef = useRef<KLineData[]>([]);
@@ -143,7 +151,6 @@ export default function PriceChart({ bars, prefs }: { bars: Bar[]; prefs: Prefs 
     if (!chart) return;
     chartRef.current = chart;
 
-    chart.setSymbol({ ticker: "TWII", pricePrecision: 2, volumePrecision: 0 });
     chart.setPeriod({ span: 1, type: "day" });
 
     const ro = new ResizeObserver(() => chart.resize());
@@ -156,16 +163,17 @@ export default function PriceChart({ bars, prefs }: { bars: Bar[]; prefs: Prefs 
     };
   }, []);
 
-  // 資料
+  // 資料 / 代號
   useEffect(() => {
     dataRef.current = toKLine(bars);
     const chart = chartRef.current;
     if (!chart) return;
+    chart.setSymbol({ ticker: symbol, pricePrecision: 2, volumePrecision: 0 });
     chart.setDataLoader({
       getBars: ({ callback }) => callback(dataRef.current, false),
     });
     chart.resetData();
-  }, [bars]);
+  }, [bars, symbol]);
 
   // 均線（可逐條開關）
   useEffect(() => {

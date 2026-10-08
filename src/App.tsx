@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useSession, signIn, signOut } from "./lib/auth-client";
-import { fetchOhlcv, type OhlcvResponse } from "./lib/api";
+import {
+  addFavorite,
+  fetchOhlcv,
+  getFavorites,
+  orderFavorites,
+  removeFavorite,
+  type Favorite,
+  type OhlcvResponse,
+} from "./lib/api";
 import PriceChart from "./components/PriceChart";
+import Sidebar from "./components/Sidebar";
 import {
   DEFAULT_PREFS,
   MA_COLORS,
@@ -14,7 +23,22 @@ import {
   type Prefs,
 } from "./lib/prefs";
 
-const INDEX = { market: "TW", symbol: "0000", name: "加權指數" };
+interface Current {
+  market: string;
+  symbol: string;
+  name: string;
+}
+
+const DEFAULT_SECURITY: Current = { market: "TW", symbol: "0000", name: "加權指數" };
+
+function readFromUrl(): Current {
+  const s = new URLSearchParams(location.search).get("s");
+  if (s && s.includes(":")) {
+    const [market, symbol] = s.split(":");
+    return { market: market.toUpperCase(), symbol, name: symbol };
+  }
+  return DEFAULT_SECURITY;
+}
 
 export default function App() {
   const { data: session, isPending } = useSession();
@@ -86,30 +110,54 @@ function Login() {
 }
 
 function Home({ email }: { email: string }) {
+  const [security, setSecurity] = useState<Current>(readFromUrl);
   const [data, setData] = useState<OhlcvResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [prefs, setPrefs] = useState<Prefs>(() => loadLocalPrefs() ?? DEFAULT_PREFS);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
   const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
+  const reloadFavorites = useCallback(() => {
+    getFavorites().then(setFavorites);
+  }, []);
+
   useEffect(() => {
-    let alive = true;
-    fetchOhlcv(INDEX.market, INDEX.symbol)
-      .then((d) => alive && setData(d))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : "讀取失敗"))
-      .finally(() => alive && setLoading(false));
+    reloadFavorites();
     fetchPrefs().then((p) => {
-      if (alive && p) {
+      if (p) {
         prefsRef.current = p;
         setPrefs(p);
         saveLocalPrefs(p);
       }
     });
+  }, [reloadFavorites]);
+
+  // 載入目前證券的日線
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError("");
+    fetchOhlcv(security.market, security.symbol)
+      .then((d) => alive && setData(d))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : "讀取失敗"))
+      .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [security.market, security.symbol]);
+
+  // 若目前證券在收藏內，補上名稱
+  useEffect(() => {
+    const f = favorites.find(
+      (x) => x.market === security.market && x.symbol === security.symbol,
+    );
+    if (f && f.name && f.name !== security.name) {
+      setSecurity((c) => ({ ...c, name: f.name }));
+    }
+  }, [favorites, security.market, security.symbol, security.name]);
 
   function apply(next: Prefs) {
     prefsRef.current = next;
@@ -118,10 +166,24 @@ function Home({ email }: { email: string }) {
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => void putPrefs(next), 500);
   }
-
-  // 用 ref 取最新值，避免連續操作時用到過期的 state。
   function update(patch: (p: Prefs) => Prefs) {
     apply(patch(prefsRef.current));
+  }
+
+  function select(s: { market: string; symbol: string; name?: string }) {
+    const next: Current = { market: s.market, symbol: s.symbol, name: s.name ?? s.symbol };
+    setSecurity(next);
+    history.replaceState(null, "", `${location.pathname}?s=${next.market}:${next.symbol}`);
+  }
+
+  const fav = favorites.find(
+    (f) => f.market === security.market && f.symbol === security.symbol,
+  );
+
+  async function toggleFavorite() {
+    if (fav) await removeFavorite(fav.id);
+    else await addFavorite(security.market, security.symbol);
+    reloadFavorites();
   }
 
   const bars = data?.bars ?? [];
@@ -136,6 +198,13 @@ function Home({ email }: { email: string }) {
   return (
     <div className="app">
       <header className="topbar">
+        <button
+          className="ghost icon"
+          title="顯示/隱藏收藏"
+          onClick={() => setSidebarOpen((o) => !o)}
+        >
+          ☰
+        </button>
         <span className="brand small">台股筆記</span>
         <span className="grow" />
         <span className="muted small">{email}</span>
@@ -144,106 +213,140 @@ function Home({ email }: { email: string }) {
         </button>
       </header>
 
-      <section className="symbol-bar">
-        <span className="symbol-name">{INDEX.name}</span>
-        <span className="symbol-code">({INDEX.symbol})</span>
-        {last && (
-          <>
-            <span className={`price ${dir}`}>{n(last.close)}</span>
-            <span className={`change ${dir}`}>
-              {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))} ({pct.toFixed(2)}%)
-            </span>
-            <span className="muted small">
-              開 {n(last.open)}　高 {n(last.high)}　低 {n(last.low)}　成交金額{" "}
-              {Math.round(last.turnover / 1e8).toLocaleString()} 億
-            </span>
-          </>
+      <div className="body">
+        {sidebarOpen && (
+          <Sidebar
+            current={{ market: security.market, symbol: security.symbol }}
+            favorites={favorites}
+            onSelect={select}
+            onRemove={async (id) => {
+              await removeFavorite(id);
+              reloadFavorites();
+            }}
+            onReorder={async (ids) => {
+              setFavorites((prev) =>
+                ids.map((id) => prev.find((f) => f.id === id)).filter((f): f is Favorite => !!f),
+              );
+              await orderFavorites(ids);
+            }}
+          />
         )}
-        <span className="grow" />
-        {data && (
-          <span className="muted small">
-            {data.provider}｜{data.from} ~ {data.to}
-            {data.cached ? "｜快取" : ""}
-          </span>
-        )}
-      </section>
 
-      <div className="toolbar">
-        <span className="toolbar-label">均線</span>
-        {MA_PERIODS.map((period) => {
-          const key = String(period);
-          const on = !!prefs.ma[key];
-          return (
-            <label
-              key={period}
-              className="chk"
-              style={{ color: on ? MA_COLORS[period] : "var(--muted)" }}
+        <div className="main">
+          <section className="symbol-bar">
+            <span className="symbol-name">{security.name}</span>
+            <span className="symbol-code">({security.symbol})</span>
+            <button
+              className={`star${fav ? " on" : ""}`}
+              title={fav ? "移除收藏" : "加入收藏"}
+              onClick={toggleFavorite}
             >
+              {fav ? "★" : "☆"}
+            </button>
+            {security.symbol !== "0000" && <span className="tag warn">未還原</span>}
+            {last && (
+              <>
+                <span className={`price ${dir}`}>{n(last.close)}</span>
+                <span className={`change ${dir}`}>
+                  {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))} ({pct.toFixed(2)}%)
+                </span>
+                <span className="muted small">
+                  開 {n(last.open)}　高 {n(last.high)}　低 {n(last.low)}　成交金額{" "}
+                  {Math.round(last.turnover / 1e8).toLocaleString()} 億
+                </span>
+              </>
+            )}
+            <span className="grow" />
+            {data && (
+              <span className="muted small">
+                {data.provider}｜{data.from} ~ {data.to}
+                {data.cached ? "｜快取" : ""}
+              </span>
+            )}
+          </section>
+
+          <div className="toolbar">
+            <span className="toolbar-label">均線</span>
+            {MA_PERIODS.map((period) => {
+              const key = String(period);
+              const on = !!prefs.ma[key];
+              return (
+                <label
+                  key={period}
+                  className="chk"
+                  style={{ color: on ? MA_COLORS[period] : "var(--muted)" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={() =>
+                      update((p) => ({ ...p, ma: { ...p.ma, [key]: !p.ma[key] } }))
+                    }
+                  />
+                  MA{period}
+                </label>
+              );
+            })}
+
+            <span className="toolbar-sep" />
+            <span className="toolbar-label">面板</span>
+            <label className="chk">
               <input
                 type="checkbox"
-                checked={on}
-                onChange={() =>
-                  update((p) => ({ ...p, ma: { ...p.ma, [key]: !p.ma[key] } }))
-                }
+                checked={prefs.vol}
+                onChange={() => update((p) => ({ ...p, vol: !p.vol }))}
               />
-              MA{period}
+              成交量
             </label>
-          );
-        })}
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={prefs.macd}
+                onChange={() => update((p) => ({ ...p, macd: !p.macd }))}
+              />
+              MACD
+            </label>
+            <label className="chk">
+              <input
+                type="checkbox"
+                checked={prefs.kdj}
+                onChange={() => update((p) => ({ ...p, kdj: !p.kdj }))}
+              />
+              KD
+            </label>
 
-        <span className="toolbar-sep" />
-        <span className="toolbar-label">面板</span>
-        <label className="chk">
-          <input
-            type="checkbox"
-            checked={prefs.vol}
-            onChange={() => update((p) => ({ ...p, vol: !p.vol }))}
-          />
-          成交量
-        </label>
-        <label className="chk">
-          <input
-            type="checkbox"
-            checked={prefs.macd}
-            onChange={() => update((p) => ({ ...p, macd: !p.macd }))}
-          />
-          MACD
-        </label>
-        <label className="chk">
-          <input
-            type="checkbox"
-            checked={prefs.kdj}
-            onChange={() => update((p) => ({ ...p, kdj: !p.kdj }))}
-          />
-          KD
-        </label>
+            <span className="toolbar-sep" />
+            <span className="toolbar-label">區間</span>
+            <div className="seg">
+              {RANGES.map(([label, value]) => (
+                <button
+                  key={label}
+                  className={prefs.range === value ? "active" : ""}
+                  onClick={() => update((p) => ({ ...p, range: value }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        <span className="toolbar-sep" />
-        <span className="toolbar-label">區間</span>
-        <div className="seg">
-          {RANGES.map(([label, value]) => (
-            <button
-              key={label}
-              className={prefs.range === value ? "active" : ""}
-              onClick={() => update((p) => ({ ...p, range: value }))}
-            >
-              {label}
-            </button>
-          ))}
+          <div className="chart-wrap">
+            {loading && <div className="placeholder muted">載入中…</div>}
+            {!loading && error && <div className="placeholder error">{error}</div>}
+            {!loading && !error && bars.length > 0 && (
+              <PriceChart
+                bars={bars}
+                prefs={prefs}
+                symbol={`${security.market}:${security.symbol}`}
+              />
+            )}
+          </div>
+
+          <footer className="footer muted small">
+            資料僅供參考，非投資建議。資料來源：FinMind／臺灣證券交易所。
+          </footer>
         </div>
       </div>
-
-      <div className="chart-wrap">
-        {loading && <div className="placeholder muted">載入中…</div>}
-        {!loading && error && <div className="placeholder error">{error}</div>}
-        {!loading && !error && bars.length > 0 && (
-          <PriceChart bars={bars} prefs={prefs} />
-        )}
-      </div>
-
-      <footer className="footer muted small">
-        資料僅供參考，非投資建議。資料來源：FinMind／臺灣證券交易所。
-      </footer>
     </div>
   );
 }
