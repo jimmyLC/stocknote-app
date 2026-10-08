@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: M1 done — live at https://stock.example.com (skeleton + Better Auth login + D1).** See `進度.md` for milestones.
+- **Status: M1–M2 done — live at https://stock.example.com (login + 加權指數 daily chart with MA/VOL/MACD/KD).** See `進度.md` for milestones.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
@@ -28,7 +28,7 @@ npm run deploy     # build + wrangler deploy
 npm run db:local   # wrangler d1 migrations apply stocknote-db --local
 npm run db:remote  # wrangler d1 migrations apply stocknote-db --remote
 ```
-Local secrets live in `.dev.vars` (git-ignored; copy from `.dev.vars.example`): `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and `BETTER_AUTH_URL=http://localhost:5173`. Note `wrangler dev` uses the `routes` host `stock.example.com` as the local Host, so `worker/auth.ts` lists the dev origins in `trustedOrigins` as well.
+Local secrets live in `.dev.vars` (git-ignored; copy from `.dev.vars.example`): `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and `BETTER_AUTH_URL=http://localhost:5173`. Add `ALLOW_SIGNUP=1` to temporarily re-open sign-up for local testing (production leaves it unset = closed). Note `wrangler dev` uses the `routes` host `stock.example.com` as the local Host, so `worker/auth.ts` lists the dev origins in `trustedOrigins` as well.
 
 ## Architecture (decided)
 Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded **Traditional Chinese**. The browser only ever calls our own `/api/*`; the Worker is the only thing that talks to upstream data providers.
@@ -86,7 +86,9 @@ GET  /api/notes?market=&symbol=&from=&to=
 GET  /api/notes/:date   PUT /api/notes/:date        (upsert; one per day)
 GET  /api/notes/calendar?month=
 ```
-Secrets (set by Jimmy in the Cloudflare dashboard; never print them): `FINMIND_TOKEN`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`.
+Every `/api/*` route except `/api/auth/*` and `/api/health` requires a session (checked in `worker/index.ts`). `GET /api/ohlcv?market=&symbol=&from=&to=` is cached via the Cache API (24 h) and falls back FinMind → TWSE.
+
+Secrets / vars: `BETTER_AUTH_SECRET` (Worker secret), `BETTER_AUTH_URL` (plain `var` in `wrangler.jsonc`), `FINMIND_TOKEN` (optional Worker secret; raises FinMind's free limit 300 → 600 req/hr). Never print secrets.
 
 ## Deploying
 - **Site:** push to `main` → GitHub Actions builds and runs `npx wrangler deploy` (~30 s; needs the repo secret `CLOUDFLARE_API_TOKEN`). Check with `gh run list -R jimmyLC/stocknote-app -L1`.
@@ -109,4 +111,6 @@ Secrets (set by Jimmy in the Cloudflare dashboard; never print them): `FINMIND_T
 - FinMind free tier: 300 req/hr anonymous, 600 with a free token, **non-commercial**; do not display real-time data or mirror raw data. Cache aggressively.
 - Individual-stock prices are **unadjusted** → labelled in the UI.
 - `openapi.twse.com.tw` is **not** usable (no CORS header, and only the last 5 trading days). Use the TWSE **website** `www.twse.com.tw` instead.
+- The TWSE fallback paths were validated against the live field shapes (ROC dates, comma numbers, OHLC in `MI_5MINS_HIST`, volume/turnover in `FMTQIK`) but have **not** been exercised end-to-end (FinMind has always answered first).
+- `worker/auth.ts` opens sign-up only when `ALLOW_SIGNUP=1` (local dev); production is closed (single user).
 - Quarterly-triggering note: the FinMind token, if added, must be a Worker secret and never sent to the browser.

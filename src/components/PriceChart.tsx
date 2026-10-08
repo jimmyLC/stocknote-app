@@ -77,7 +77,6 @@ export default function PriceChart({ bars }: { bars: Bar[] }) {
       chart.scrollToRealTime();
     };
     requestAnimationFrame(applyDefaultRange);
-    (window as unknown as { __chart?: Chart }).__chart = chart;
 
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
