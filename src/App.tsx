@@ -1,7 +1,18 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSession, signIn, signOut } from "./lib/auth-client";
 import { fetchOhlcv, type OhlcvResponse } from "./lib/api";
 import PriceChart from "./components/PriceChart";
+import {
+  DEFAULT_PREFS,
+  MA_COLORS,
+  MA_PERIODS,
+  RANGES,
+  fetchPrefs,
+  loadLocalPrefs,
+  putPrefs,
+  saveLocalPrefs,
+  type Prefs,
+} from "./lib/prefs";
 
 const INDEX = { market: "TW", symbol: "0000", name: "加權指數" };
 
@@ -78,6 +89,8 @@ function Home({ email }: { email: string }) {
   const [data, setData] = useState<OhlcvResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [prefs, setPrefs] = useState<Prefs>(() => loadLocalPrefs() ?? DEFAULT_PREFS);
+  const saveTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -85,10 +98,23 @@ function Home({ email }: { email: string }) {
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e instanceof Error ? e.message : "讀取失敗"))
       .finally(() => alive && setLoading(false));
+    fetchPrefs().then((p) => {
+      if (alive && p) {
+        setPrefs(p);
+        saveLocalPrefs(p);
+      }
+    });
     return () => {
       alive = false;
     };
   }, []);
+
+  function update(next: Prefs) {
+    setPrefs(next);
+    saveLocalPrefs(next);
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => void putPrefs(next), 500);
+  }
 
   const bars = data?.bars ?? [];
   const last = bars.at(-1);
@@ -134,11 +160,75 @@ function Home({ email }: { email: string }) {
         )}
       </section>
 
+      <div className="toolbar">
+        <span className="toolbar-label">均線</span>
+        {MA_PERIODS.map((p) => {
+          const on = !!prefs.ma[String(p)];
+          return (
+            <label
+              key={p}
+              className="chk"
+              style={{ color: on ? MA_COLORS[p] : "var(--muted)" }}
+            >
+              <input
+                type="checkbox"
+                checked={on}
+                onChange={() =>
+                  update({ ...prefs, ma: { ...prefs.ma, [String(p)]: !on } })
+                }
+              />
+              MA{p}
+            </label>
+          );
+        })}
+
+        <span className="toolbar-sep" />
+        <span className="toolbar-label">面板</span>
+        <label className="chk">
+          <input
+            type="checkbox"
+            checked={prefs.vol}
+            onChange={() => update({ ...prefs, vol: !prefs.vol })}
+          />
+          成交量
+        </label>
+        <label className="chk">
+          <input
+            type="checkbox"
+            checked={prefs.macd}
+            onChange={() => update({ ...prefs, macd: !prefs.macd })}
+          />
+          MACD
+        </label>
+        <label className="chk">
+          <input
+            type="checkbox"
+            checked={prefs.kdj}
+            onChange={() => update({ ...prefs, kdj: !prefs.kdj })}
+          />
+          KD
+        </label>
+
+        <span className="toolbar-sep" />
+        <span className="toolbar-label">區間</span>
+        <div className="seg">
+          {RANGES.map(([label, value]) => (
+            <button
+              key={label}
+              className={prefs.range === value ? "active" : ""}
+              onClick={() => update({ ...prefs, range: value })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="chart-wrap">
         {loading && <div className="placeholder muted">載入中…</div>}
         {!loading && error && <div className="placeholder error">{error}</div>}
         {!loading && !error && bars.length > 0 && (
-          <PriceChart key={`${INDEX.market}:${INDEX.symbol}`} bars={bars} />
+          <PriceChart bars={bars} prefs={prefs} />
         )}
       </div>
 

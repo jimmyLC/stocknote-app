@@ -4,7 +4,9 @@ import { cachedJson } from "./cache";
 import { getDailyOHLCV } from "./market";
 import type { Env } from "./types";
 
-const app = new Hono<{ Bindings: Env }>();
+type Variables = { userId: string };
+
+const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Better Auth 掛在 /api/auth/*
 app.on(["GET", "POST"], "/api/auth/*", (c) => getAuth(c.env).handler(c.req.raw));
@@ -15,7 +17,8 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.use("/api/*", async (c, next) => {
   const session = await getAuth(c.env).api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: "unauthorized" }, 401);
-  return next();
+  c.set("userId", session.user.id);
+  await next();
 });
 
 // 目前登入者
@@ -44,6 +47,28 @@ app.get("/api/ohlcv", async (c) => {
       502,
     );
   }
+});
+
+// 使用者偏好（指標開關、預設區間）
+app.get("/api/prefs", async (c) => {
+  const row = await c.env.DB.prepare(
+    "select prefs_json from user_prefs where user_id = ?",
+  )
+    .bind(c.get("userId"))
+    .first<{ prefs_json: string }>();
+  return c.json({ prefs: row ? JSON.parse(row.prefs_json) : null });
+});
+
+app.put("/api/prefs", async (c) => {
+  const body = await c.req.json<{ prefs?: unknown }>().catch(() => ({ prefs: undefined }));
+  await c.env.DB.prepare(
+    `insert into user_prefs (user_id, prefs_json, updated_at)
+     values (?, ?, ?)
+     on conflict(user_id) do update set prefs_json = excluded.prefs_json, updated_at = excluded.updated_at`,
+  )
+    .bind(c.get("userId"), JSON.stringify(body.prefs ?? {}), Date.now())
+    .run();
+  return c.json({ ok: true });
 });
 
 // 其餘交給靜態資源（SPA 由 not_found_handling: single-page-application 處理）

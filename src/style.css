@@ -211,3 +211,67 @@ button.link {
   border-top: 1px solid var(--border);
   text-align: center;
 }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.toolbar-label {
+  color: var(--muted);
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+}
+
+.chk {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.chk input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg button {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 0;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.seg button.active {
+  background: var(--accent);
+  color: #fff;
+}

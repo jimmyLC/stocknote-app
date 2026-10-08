@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react";
 import { init, dispose, type Chart, type KLineData } from "klinecharts";
 import type { Bar } from "../lib/api";
-
-// 均線顏色（沿用看盤習慣）
-const MA_COLORS = ["#4286F5", "#FEBD09", "#E65596", "#83BF0A", "#834BEB", "#FC7742"];
+import { MA_PERIODS, MA_COLORS, type Prefs } from "../lib/prefs";
 
 function toKLine(bars: Bar[]): KLineData[] {
   return bars.map((b) => {
@@ -21,15 +19,41 @@ function toKLine(bars: Bar[]): KLineData[] {
   });
 }
 
+interface Pane {
+  name: string;
+  paneId: string;
+  calcParams: number[];
+  height: number;
+  order: number;
+}
+
+const PANES: Record<"vol" | "macd" | "kdj", Pane> = {
+  vol: { name: "VOL", paneId: "volume_pane", calcParams: [5, 20], height: 100, order: 10 },
+  macd: { name: "MACD", paneId: "macd_pane", calcParams: [12, 26, 9], height: 120, order: 20 },
+  kdj: { name: "KDJ", paneId: "kdj_pane", calcParams: [9, 3, 3], height: 120, order: 30 },
+};
+
+function applyPane(chart: Chart, enabled: boolean, pane: Pane) {
+  chart.removeIndicator({ paneId: pane.paneId });
+  if (enabled) {
+    chart.createIndicator({ name: pane.name, paneId: pane.paneId, calcParams: pane.calcParams });
+    chart.setPaneOptions({ id: pane.paneId, height: pane.height, order: pane.order });
+  }
+}
+
 /**
- * klinecharts v10：K線 + 均線(MA5/10/20/60/120/240) + 成交量 + MACD + KD(KDJ)。
+ * klinecharts v10：K線 + 均線 + 成交量 + MACD + KD。
  * 外層刻意保持薄，將來換圖表庫只改這裡。
  */
-export default function PriceChart({ bars }: { bars: Bar[] }) {
+export default function PriceChart({ bars, prefs }: { bars: Bar[]; prefs: Prefs }) {
   const elRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<Chart | null>(null);
   const dataRef = useRef<KLineData[]>([]);
-  dataRef.current = toKLine(bars);
 
+  const maPeriods = MA_PERIODS.filter((p) => prefs.ma[String(p)]);
+  const maKey = maPeriods.join(",");
+
+  // 初始化（只做一次）
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
@@ -38,55 +62,83 @@ export default function PriceChart({ bars }: { bars: Bar[] }) {
       locale: "zh-CN",
       timezone: "Asia/Taipei",
       layout: {
-        barSpaceLimit: { min: 1, max: 50 },
+        barSpaceLimit: { min: 0.1, max: 50 },
         pane: { height: 100, minHeight: 40, dragEnabled: true },
         yAxis: { position: "right", inside: false, scrollZoomEnabled: true },
       },
     });
     if (!chart) return;
+    chartRef.current = chart;
 
     chart.setSymbol({ ticker: "TWII", pricePrecision: 2, volumePrecision: 0 });
     chart.setPeriod({ span: 1, type: "day" });
-    chart.setDataLoader({
-      getBars: ({ callback }) => callback(dataRef.current, false),
-    });
-
-    // 均線疊在 K 線面板上（6 條）
-    chart.createIndicator(
-      {
-        name: "MA",
-        paneId: "candle_pane",
-        calcParams: [5, 10, 20, 60, 120, 240],
-        styles: { lines: MA_COLORS.map((color) => ({ color })) },
-      },
-      true,
-    );
-
-    // 成交量（成交金額）／MACD／KD 各自一個面板
-    chart.createIndicator({ name: "VOL", paneId: "volume_pane", calcParams: [5, 20] });
-    chart.createIndicator({ name: "MACD", paneId: "macd_pane", calcParams: [12, 26, 9] });
-    chart.createIndicator({ name: "KDJ", paneId: "kdj_pane", calcParams: [9, 3, 3] });
-    chart.setPaneOptions({ id: "volume_pane", height: 100, order: 10 });
-    chart.setPaneOptions({ id: "macd_pane", height: 120, order: 20 });
-    chart.setPaneOptions({ id: "kdj_pane", height: 120, order: 30 });
-
-    // 預設顯示最後約 1 年（約 250 根）
-    const applyDefaultRange = () => {
-      const size = chart.getSize();
-      const width = size?.width ?? el.clientWidth ?? 800;
-      chart.setBarSpace(width / 250);
-      chart.scrollToRealTime();
-    };
-    requestAnimationFrame(applyDefaultRange);
 
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
 
     return () => {
       ro.disconnect();
+      chartRef.current = null;
       dispose(chart);
     };
   }, []);
+
+  // 資料
+  useEffect(() => {
+    dataRef.current = toKLine(bars);
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.setDataLoader({
+      getBars: ({ callback }) => callback(dataRef.current, false),
+    });
+    chart.resetData();
+  }, [bars]);
+
+  // 均線（可逐條開關）
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.removeIndicator({ paneId: "candle_pane", name: "MA" });
+    const periods = maKey ? maKey.split(",").map(Number) : [];
+    if (periods.length > 0) {
+      chart.createIndicator(
+        {
+          name: "MA",
+          paneId: "candle_pane",
+          calcParams: periods,
+          styles: { lines: periods.map((p) => ({ color: MA_COLORS[p] })) },
+        },
+        true,
+      );
+    }
+  }, [maKey]);
+
+  // 三個子面板開關
+  useEffect(() => {
+    if (chartRef.current) applyPane(chartRef.current, prefs.vol, PANES.vol);
+  }, [prefs.vol]);
+  useEffect(() => {
+    if (chartRef.current) applyPane(chartRef.current, prefs.macd, PANES.macd);
+  }, [prefs.macd]);
+  useEffect(() => {
+    if (chartRef.current) applyPane(chartRef.current, prefs.kdj, PANES.kdj);
+  }, [prefs.kdj]);
+
+  // 顯示區間
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const apply = () => {
+      const total = dataRef.current.length;
+      if (!total) return;
+      const width = chart.getSize()?.width ?? elRef.current?.clientWidth ?? 800;
+      const n = prefs.range ?? total;
+      chart.setBarSpace(Math.max(0.1, Math.min(50, width / n)));
+      chart.scrollToRealTime();
+    };
+    const id = requestAnimationFrame(apply);
+    return () => cancelAnimationFrame(id);
+  }, [prefs.range, bars]);
 
   return <div ref={elRef} className="chart" />;
 }
