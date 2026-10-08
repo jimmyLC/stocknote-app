@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: M1–M2 done — live at https://stock.example.com (login + 加權指數 daily chart with MA/VOL/MACD/KD).** See `進度.md` for milestones.
+- **Status: M1–M3 done — live at https://stock.example.com (login + 加權指數 daily chart with toggleable MA/VOL/MACD/KD and 3M/6M/1Y/全部 ranges).** See `進度.md` for milestones.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
@@ -36,7 +36,8 @@ Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded 
 | Area | Choice |
 |---|---|
 | Frontend | React 19 + TS + Vite + `vite-plugin-pwa` |
-| Chart | **klinecharts 10.0.3** behind a thin `ChartAdapter` (isolates the dependency — klinecharts is a one-maintainer project) |
+| Chart | **klinecharts 10.0.3** in `src/components/PriceChart.tsx` — a thin wrapper, the only file that knows klinecharts |
+| Prefs | indicator toggles + default range stored in `user_prefs` (D1) via `/api/prefs`, mirrored to `localStorage` (`src/lib/prefs.ts`) |
 | Host | Cloudflare **Workers (static assets)**, custom domain `stock.example.com` |
 | API | same Worker, `/api/*` (`run_worker_first: ["/api/*"]`) |
 | DB | Cloudflare **D1** (SQLite) |
@@ -85,6 +86,7 @@ GET  /api/favorites    POST /api/favorites    DELETE /api/favorites/:id    PATCH
 GET  /api/notes?market=&symbol=&from=&to=
 GET  /api/notes/:date   PUT /api/notes/:date        (upsert; one per day)
 GET  /api/notes/calendar?month=
+GET  /api/prefs    PUT /api/prefs                per-user prefs (indicator toggles, default range)
 ```
 Every `/api/*` route except `/api/auth/*` and `/api/health` requires a session (checked in `worker/index.ts`). `GET /api/ohlcv?market=&symbol=&from=&to=` is cached via the Cache API (24 h) and falls back FinMind → TWSE.
 
