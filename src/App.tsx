@@ -1,5 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useSession, signIn, signOut } from "./lib/auth-client";
+import { fetchOhlcv, type OhlcvResponse } from "./lib/api";
+import PriceChart from "./components/PriceChart";
+
+const INDEX = { market: "TW", symbol: "0000", name: "加權指數" };
 
 export default function App() {
   const { data: session, isPending } = useSession();
@@ -71,6 +75,30 @@ function Login() {
 }
 
 function Home({ email }: { email: string }) {
+  const [data, setData] = useState<OhlcvResponse | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    fetchOhlcv(INDEX.market, INDEX.symbol)
+      .then((d) => alive && setData(d))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : "讀取失敗"))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const bars = data?.bars ?? [];
+  const last = bars.at(-1);
+  const prev = bars.at(-2);
+  const change = last && prev ? last.close - prev.close : 0;
+  const pct = last && prev ? (change / prev.close) * 100 : 0;
+  const dir = change > 0 ? "up" : change < 0 ? "down" : "";
+  const n = (v: number, digits = 2) =>
+    v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
   return (
     <div className="app">
       <header className="topbar">
@@ -81,14 +109,42 @@ function Home({ email }: { email: string }) {
           登出
         </button>
       </header>
-      <main className="center">
-        <div className="card">
-          <h1 className="brand">M1 完成 ✅</h1>
-          <p className="muted">
-            登入與部署骨架已就緒。接下來 M2 會接上資料來源與 K 線圖。
-          </p>
-        </div>
-      </main>
+
+      <section className="symbol-bar">
+        <span className="symbol-name">{INDEX.name}</span>
+        <span className="symbol-code">({INDEX.symbol})</span>
+        {last && (
+          <>
+            <span className={`price ${dir}`}>{n(last.close)}</span>
+            <span className={`change ${dir}`}>
+              {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))} ({pct.toFixed(2)}%)
+            </span>
+            <span className="muted small">
+              開 {n(last.open)}　高 {n(last.high)}　低 {n(last.low)}　成交金額{" "}
+              {Math.round(last.turnover / 1e8).toLocaleString()} 億
+            </span>
+          </>
+        )}
+        <span className="grow" />
+        {data && (
+          <span className="muted small">
+            {data.provider}｜{data.from} ~ {data.to}
+            {data.cached ? "｜快取" : ""}
+          </span>
+        )}
+      </section>
+
+      <div className="chart-wrap">
+        {loading && <div className="placeholder muted">載入中…</div>}
+        {!loading && error && <div className="placeholder error">{error}</div>}
+        {!loading && !error && bars.length > 0 && (
+          <PriceChart key={`${INDEX.market}:${INDEX.symbol}`} bars={bars} />
+        )}
+      </div>
+
+      <footer className="footer muted small">
+        資料僅供參考，非投資建議。資料來源：FinMind／臺灣證券交易所。
+      </footer>
     </div>
   );
 }

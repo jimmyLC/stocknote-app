@@ -16,8 +16,8 @@ function createAuth(env: Env) {
     ],
     emailAndPassword: {
       enabled: true,
-      // 單人使用：關閉公開註冊，只有既有帳號能登入。
-      disableSignUp: true,
+      // 單人使用：預設關閉公開註冊。本機開發可用 ALLOW_SIGNUP=1 暫時開放。
+      disableSignUp: env.ALLOW_SIGNUP !== "1" && env.ALLOW_SIGNUP !== "true",
     },
   });
 }
