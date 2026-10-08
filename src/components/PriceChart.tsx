@@ -70,9 +70,14 @@ export default function PriceChart({ bars }: { bars: Bar[] }) {
     chart.setPaneOptions({ id: "kdj_pane", height: 120, order: 30 });
 
     // 預設顯示最後約 1 年（約 250 根）
-    const width = el.clientWidth || 800;
-    chart.setBarSpace(Math.max(1, Math.min(50, width / 250)));
-    chart.scrollToRealTime();
+    const applyDefaultRange = () => {
+      const size = chart.getSize();
+      const width = size?.width ?? el.clientWidth ?? 800;
+      chart.setBarSpace(width / 250);
+      chart.scrollToRealTime();
+    };
+    requestAnimationFrame(applyDefaultRange);
+    (window as unknown as { __chart?: Chart }).__chart = chart;
 
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
