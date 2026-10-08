@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useSession, signIn, signUp, signOut } from "./lib/auth-client";
+import { useSession, signIn, signOut } from "./lib/auth-client";
 
 export default function App() {
   const { data: session, isPending } = useSession();
@@ -10,11 +10,10 @@ export default function App() {
   if (!session) {
     return <Login />;
   }
-  return <Home name={session.user.name} email={session.user.email} />;
+  return <Home email={session.user.email} />;
 }
 
 function Login() {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,10 +24,7 @@ function Login() {
     setBusy(true);
     setError("");
     try {
-      const res =
-        mode === "signup"
-          ? await signUp.email({ email, password, name: email.split("@")[0] || email })
-          : await signIn.email({ email, password });
+      const res = await signIn.email({ email, password });
       if (res.error) setError(res.error.message ?? "登入失敗");
     } catch (err) {
       setError(err instanceof Error ? err.message : "發生錯誤，請稍後再試");
@@ -41,9 +37,7 @@ function Login() {
     <div className="center">
       <form className="card" onSubmit={submit}>
         <h1 className="brand">台股筆記</h1>
-        <p className="muted small">
-          {mode === "signin" ? "登入以繼續" : "建立帳號"}
-        </p>
+        <p className="muted small">登入以繼續</p>
 
         <label>
           Email
@@ -61,8 +55,7 @@ function Login() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
-            minLength={8}
+            autoComplete="current-password"
             required
           />
         </label>
@@ -70,31 +63,20 @@ function Login() {
         {error && <p className="error small">{error}</p>}
 
         <button type="submit" disabled={busy}>
-          {busy ? "處理中…" : mode === "signin" ? "登入" : "註冊"}
-        </button>
-
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            setMode(mode === "signin" ? "signup" : "signin");
-            setError("");
-          }}
-        >
-          {mode === "signin" ? "還沒有帳號？註冊" : "已有帳號？登入"}
+          {busy ? "登入中…" : "登入"}
         </button>
       </form>
     </div>
   );
 }
 
-function Home({ name, email }: { name: string; email: string }) {
+function Home({ email }: { email: string }) {
   return (
     <div className="app">
       <header className="topbar">
         <span className="brand small">台股筆記</span>
         <span className="grow" />
-        <span className="muted small">{name || email}</span>
+        <span className="muted small">{email}</span>
         <button className="ghost" onClick={() => signOut()}>
           登出
         </button>
