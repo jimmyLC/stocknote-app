@@ -16,8 +16,8 @@ function createAuth(env: Env) {
     ],
     emailAndPassword: {
       enabled: true,
-      // 建好你自己的帳號後，把下面這行打開即可關閉公開註冊（單人使用）：
-      // disableSignUp: true,
+      // 單人使用：關閉公開註冊，只有既有帳號能登入。
+      disableSignUp: true,
     },
   });
 }
