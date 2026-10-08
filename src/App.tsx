@@ -140,6 +140,7 @@ function Home({ email }: { email: string }) {
     let alive = true;
     setLoading(true);
     setError("");
+    setData(null); // 清掉舊資料，避免標題顯示上一檔的數字
     fetchOhlcv(security.market, security.symbol)
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e instanceof Error ? e.message : "讀取失敗"))

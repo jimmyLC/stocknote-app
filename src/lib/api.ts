@@ -55,7 +55,11 @@ export async function fetchOhlcv(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `讀取資料失敗 (${res.status})`);
+    const message: string = body?.error ?? "";
+    if (res.status === 402 || message.includes("402") || /upper limit/i.test(message)) {
+      throw new Error("資料來源額度暫時用滿，請稍後再試（設定免費 FinMind token 可提高額度）");
+    }
+    throw new Error(message || `讀取資料失敗 (${res.status})`);
   }
   return (await res.json()) as OhlcvResponse;
 }
