@@ -346,6 +346,15 @@ function Home({ email }: { email: string }) {
                     {data.cached ? "｜快取" : ""}
                   </span>
                 )}
+                <button
+                  className="primary"
+                  disabled={!last}
+                  onClick={() =>
+                    setDrawerDate(last ? last.date : new Date().toISOString().slice(0, 10))
+                  }
+                >
+                  ＋ 寫筆記
+                </button>
               </section>
 
               <div className="toolbar">
@@ -412,7 +421,7 @@ function Home({ email }: { email: string }) {
                   ))}
                 </div>
                 <span className="grow" />
-                <span className="muted small">點 K 線可寫當天筆記</span>
+                <span className="muted small">點 K 線、或用上方「＋ 寫筆記」來記錄</span>
               </div>
 
               <div className="chart-wrap">
@@ -444,9 +453,12 @@ function Home({ email }: { email: string }) {
           symbol={security.symbol}
           name={security.name}
           date={drawerDate}
+          min={data?.from ?? ""}
+          max={data?.to ?? ""}
           note={drawerDate ? noteByDate.get(drawerDate) ?? null : null}
           bar={drawerBar}
           prevClose={drawerPrev}
+          onDateChange={(d) => setDrawerDate(d)}
           onSave={handleSaveNote}
           onClose={() => setDrawerDate(null)}
         />

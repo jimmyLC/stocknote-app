@@ -9,9 +9,12 @@ interface Props {
   symbol: string;
   name: string;
   date: string | null;
+  min: string;
+  max: string;
   note: Note | null;
   bar: Bar | null;
   prevClose: number | null;
+  onDateChange: (date: string) => void;
   onSave: (input: Omit<NoteInput, "market" | "symbol" | "date">) => void;
   onClose: () => void;
 }
@@ -21,9 +24,12 @@ export default function JournalDrawer({
   symbol,
   name,
   date,
+  min,
+  max,
   note,
   bar,
   prevClose,
+  onDateChange,
   onSave,
   onClose,
 }: Props) {
@@ -63,13 +69,24 @@ export default function JournalDrawer({
         <div>
           <div className="drawer-title">交易日誌</div>
           <div className="muted small">
-            {name} ({symbol})｜{date}
+            {name} ({symbol})
           </div>
         </div>
         <button className="ghost" onClick={onClose}>
           關閉
         </button>
       </div>
+
+      <label className="field">
+        日期
+        <input
+          type="date"
+          value={date}
+          min={min}
+          max={max}
+          onChange={(e) => e.target.value && onDateChange(e.target.value)}
+        />
+      </label>
 
       {bar && (
         <div className="day-quote small">

@@ -434,6 +434,15 @@ button.icon {
   border-color: #5a4a2a;
 }
 
+button.primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+
 /* 日誌抽屜 */
 .drawer {
   width: 320px;
