@@ -1,7 +1,79 @@
 import { useEffect, useRef } from "react";
-import { init, dispose, type Chart, type KLineData } from "klinecharts";
+import {
+  init,
+  dispose,
+  type Chart,
+  type DeepPartial,
+  type KLineData,
+  type Styles,
+} from "klinecharts";
 import type { Bar } from "../lib/api";
 import { MA_PERIODS, MA_COLORS, type Prefs } from "../lib/prefs";
+
+// 台股慣例：紅漲綠跌（與標題列一致）。
+const UP = "#ef5350";
+const DOWN = "#26c281";
+const UP_SOFT = "rgba(239, 83, 80, 0.7)";
+const DOWN_SOFT = "rgba(38, 194, 129, 0.7)";
+// 格線調淡（klinecharts 預設是 #EDEDED，在深色底上太亮）。
+const GRID = "rgba(255, 255, 255, 0.05)";
+const AXIS = "#26262c";
+
+// 深色主題，接近 klinecharts 官網 demo 的質感。
+const CHART_STYLES: DeepPartial<Styles> = {
+  grid: {
+    show: true,
+    horizontal: { show: true, size: 1, color: GRID, style: "dashed", dashedValue: [2, 2] },
+    vertical: { show: true, size: 1, color: GRID, style: "dashed", dashedValue: [2, 2] },
+  },
+  candle: {
+    bar: {
+      upColor: UP,
+      downColor: DOWN,
+      upBorderColor: UP,
+      downBorderColor: DOWN,
+      upWickColor: UP,
+      downWickColor: DOWN,
+    },
+    priceMark: {
+      high: { color: "#8b8f96" },
+      low: { color: "#8b8f96" },
+      last: { upColor: UP, downColor: DOWN },
+    },
+    tooltip: {
+      title: { color: "#9aa0a6" },
+      legend: { color: "#c9ccd1" },
+    },
+  },
+  indicator: {
+    bars: [{ upColor: UP_SOFT, downColor: DOWN_SOFT }],
+    tooltip: {
+      title: { color: "#9aa0a6" },
+      legend: { color: "#c9ccd1" },
+    },
+  },
+  xAxis: {
+    axisLine: { color: AXIS },
+    tickLine: { color: AXIS },
+    tickText: { color: "#9aa0a6" },
+  },
+  yAxis: {
+    axisLine: { color: AXIS },
+    tickLine: { color: AXIS },
+    tickText: { color: "#9aa0a6" },
+  },
+  separator: { color: AXIS },
+  crosshair: {
+    horizontal: {
+      line: { color: "#6b7280" },
+      text: { backgroundColor: "#3a3a42", borderColor: "#3a3a42" },
+    },
+    vertical: {
+      line: { color: "#6b7280" },
+      text: { backgroundColor: "#3a3a42", borderColor: "#3a3a42" },
+    },
+  },
+};
 
 function toKLine(bars: Bar[]): KLineData[] {
   return bars.map((b) => {
@@ -61,6 +133,7 @@ export default function PriceChart({ bars, prefs }: { bars: Bar[]; prefs: Prefs 
     const chart: Chart | null = init(el, {
       locale: "zh-CN",
       timezone: "Asia/Taipei",
+      styles: CHART_STYLES,
       layout: {
         barSpaceLimit: { min: 0.1, max: 50 },
         pane: { height: 100, minHeight: 40, dragEnabled: true },
