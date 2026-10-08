@@ -15,7 +15,6 @@ export default function App() {
 
 function Login() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,7 +27,7 @@ function Login() {
     try {
       const res =
         mode === "signup"
-          ? await signUp.email({ email, password, name })
+          ? await signUp.email({ email, password, name: email.split("@")[0] || email })
           : await signIn.email({ email, password });
       if (res.error) setError(res.error.message ?? "登入失敗");
     } catch (err) {
@@ -46,17 +45,6 @@ function Login() {
           {mode === "signin" ? "登入以繼續" : "建立帳號"}
         </p>
 
-        {mode === "signup" && (
-          <label>
-            名稱
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-              required
-            />
-          </label>
-        )}
         <label>
           Email
           <input
