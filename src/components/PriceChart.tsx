@@ -14,7 +14,8 @@ function toKLine(bars: Bar[]): KLineData[] {
       high: b.high,
       low: b.low,
       close: b.close,
-      volume: b.volume,
+      // 依設計：圖上的「量」用成交金額（NTD），以 VOL 面板呈現。
+      volume: b.turnover,
       turnover: b.turnover,
     };
   });
