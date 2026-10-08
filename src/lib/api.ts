@@ -151,6 +151,19 @@ export async function saveNote(input: NoteInput): Promise<void> {
   });
 }
 
+export async function getNote(
+  market: string,
+  symbol: string,
+  date: string,
+): Promise<Note | null> {
+  const params = new URLSearchParams({ market, symbol });
+  const res = await fetch(`/api/notes/${encodeURIComponent(date)}?${params.toString()}`, {
+    credentials: "same-origin",
+  });
+  const data = await json<{ note: Note | null }>(res);
+  return data?.note ?? null;
+}
+
 export async function fetchCalendar(month: string): Promise<CalendarNote[]> {
   const res = await fetch(`/api/notes/calendar?month=${encodeURIComponent(month)}`, {
     credentials: "same-origin",

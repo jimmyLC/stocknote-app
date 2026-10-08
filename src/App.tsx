@@ -14,6 +14,7 @@ import {
   fetchNotes,
   fetchOhlcv,
   getFavorites,
+  getNote,
   orderFavorites,
   removeFavorite,
   saveNote,
@@ -138,6 +139,7 @@ function Home({ email }: { email: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640);
   const [notes, setNotes] = useState<Note[]>([]);
   const [drawerDate, setDrawerDate] = useState<string | null>(null);
+  const [drawerNote, setDrawerNote] = useState<Note | null>(null);
   const [view, setView] = useState<"chart" | "calendar">("chart");
   const [calendarKey, setCalendarKey] = useState(0);
   const prefsRef = useRef(prefs);
@@ -250,6 +252,27 @@ function Home({ email }: { email: string }) {
   const noteByDate = useMemo(() => new Map(notes.map((x) => [x.date, x])), [notes]);
   const noteDates = useMemo(() => notes.map((x) => x.date), [notes]);
 
+  // 抽屜要顯示的筆記：本地清單沒有（例如剛從別檔切過來）就單獨抓
+  useEffect(() => {
+    if (!drawerDate) {
+      setDrawerNote(null);
+      return;
+    }
+    const local = noteByDate.get(drawerDate);
+    if (local) {
+      setDrawerNote(local);
+      return;
+    }
+    let alive = true;
+    setDrawerNote(null);
+    getNote(security.market, security.symbol, drawerDate).then(
+      (n) => alive && setDrawerNote(n),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [drawerDate, noteByDate, security.market, security.symbol]);
+
   const drawerIndex = drawerDate ? bars.findIndex((b) => b.date === drawerDate) : -1;
   const drawerBar = drawerIndex >= 0 ? bars[drawerIndex] : null;
   const drawerPrev = drawerIndex > 0 ? bars[drawerIndex - 1].close : null;
@@ -295,10 +318,12 @@ function Home({ email }: { email: string }) {
     setDrawerDate(bars[j].date);
   }
 
-  function openFromCalendar(item: { date: string; market: string; symbol: string }) {
-    select({ market: item.market, symbol: item.symbol });
-    setView("chart");
-    setDrawerDate(item.date);
+  // 從日曆點一則筆記：切到該證券並直接開抽屜（不換回 K 線檢視）
+  function openNote(market: string, symbol: string, date: string) {
+    const favorite = favorites.find((f) => f.market === market && f.symbol === symbol);
+    setSecurity({ market, symbol, name: favorite?.name ?? symbol });
+    history.replaceState(null, "", `${location.pathname}?s=${market}:${symbol}`);
+    setDrawerDate(date);
   }
 
   return (
@@ -492,7 +517,10 @@ function Home({ email }: { email: string }) {
               </div>
             </>
           ) : (
-            <CalendarView onOpen={openFromCalendar} refreshKey={calendarKey} />
+            <CalendarView
+              onOpen={(n) => openNote(n.market, n.symbol, n.date)}
+              refreshKey={calendarKey}
+            />
           )}
 
           <footer className="footer muted small">
@@ -501,14 +529,14 @@ function Home({ email }: { email: string }) {
         </div>
 
         <JournalDrawer
-          open={view === "chart" && drawerDate !== null}
+          open={drawerDate !== null}
           market={security.market}
           symbol={security.symbol}
           name={security.name}
           date={drawerDate}
           min={data?.from ?? ""}
           max={data?.to ?? ""}
-          note={drawerDate ? noteByDate.get(drawerDate) ?? null : null}
+          note={drawerNote}
           bar={drawerBar}
           prevClose={drawerPrev}
           onDateChange={(d) => setDrawerDate(d)}

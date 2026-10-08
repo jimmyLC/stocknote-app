@@ -268,6 +268,23 @@ app.put("/api/notes/:date", async (c) => {
   return c.json({ ok: true });
 });
 
+app.get("/api/notes/:date", async (c) => {
+  const date = c.req.param("date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ note: null }, 400);
+  const market = (c.req.query("market") ?? "TW").toUpperCase();
+  const symbol = c.req.query("symbol") ?? "0000";
+  const row = await c.env.DB.prepare(
+    `select trade_date as date, title, body, tags, mood, updated_at as updatedAt
+     from journal_notes
+     where user_id = ? and market = ? and symbol = ? and trade_date = ?`,
+  )
+    .bind(c.get("userId"), market, symbol, date)
+    .first<{ tags: string | null }>();
+  return c.json({
+    note: row ? { ...row, tags: row.tags ? (JSON.parse(row.tags) as string[]) : [] } : null,
+  });
+});
+
 // 其餘交給靜態資源（SPA 由 not_found_handling: single-page-application 處理）
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 

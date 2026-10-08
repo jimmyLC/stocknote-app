@@ -83,7 +83,7 @@ registerOverlay({
   createPointFigures: ({ coordinates }) => [
     {
       type: "circle",
-      attrs: { x: coordinates[0].x, y: coordinates[0].y, r: 3 },
+      attrs: { x: coordinates[0].x, y: coordinates[0].y, r: 4 },
       styles: { style: "fill", color: "#4f8cff" },
     },
   ],
@@ -295,13 +295,15 @@ export default function PriceChart({
     if (!noteKey) return;
     const set = new Set(noteKey.split(","));
     for (const bar of series) {
-      if (!bar.dates.some((x) => set.has(x))) continue;
+      const noteDate = bar.dates.find((x) => set.has(x));
+      if (!noteDate) continue;
       chart.createOverlay({
         id: `note-${bar.timestamp}`,
         name: "noteDot",
         paneId: "candle_pane",
         points: [{ timestamp: bar.timestamp, value: bar.low }],
-        lock: true,
+        lock: false,
+        onClick: () => pickRef.current(noteDate),
       });
     }
   }, [noteKey, series]);
