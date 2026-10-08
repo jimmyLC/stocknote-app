@@ -6,6 +6,7 @@ import {
   getFavorites,
   orderFavorites,
   removeFavorite,
+  searchSecurities,
   type Favorite,
   type OhlcvResponse,
 } from "./lib/api";
@@ -159,6 +160,21 @@ function Home({ email }: { email: string }) {
       setSecurity((c) => ({ ...c, name: f.name }));
     }
   }, [favorites, security.market, security.symbol, security.name]);
+
+  // 從網址載入時名稱未知（name === symbol），查主檔補上
+  useEffect(() => {
+    if (security.name !== security.symbol) return;
+    let alive = true;
+    searchSecurities(security.symbol).then((list) => {
+      const hit = list.find(
+        (s) => s.symbol === security.symbol && s.market === security.market,
+      );
+      if (alive && hit) setSecurity((c) => ({ ...c, name: hit.name }));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [security.market, security.symbol, security.name]);
 
   function apply(next: Prefs) {
     prefsRef.current = next;
