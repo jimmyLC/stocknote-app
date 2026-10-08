@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSession, signIn, signOut } from "./lib/auth-client";
 import {
   addFavorite,
+  fetchNotes,
   fetchOhlcv,
   getFavorites,
   orderFavorites,
   removeFavorite,
+  saveNote,
   searchSecurities,
+  type CalendarNote,
   type Favorite,
+  type Note,
+  type NoteInput,
   type OhlcvResponse,
 } from "./lib/api";
 import PriceChart from "./components/PriceChart";
 import Sidebar from "./components/Sidebar";
+import JournalDrawer from "./components/JournalDrawer";
+import CalendarView from "./components/CalendarView";
 import {
   DEFAULT_PREFS,
   MA_COLORS,
@@ -118,6 +125,10 @@ function Home({ email }: { email: string }) {
   const [prefs, setPrefs] = useState<Prefs>(() => loadLocalPrefs() ?? DEFAULT_PREFS);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [drawerDate, setDrawerDate] = useState<string | null>(null);
+  const [view, setView] = useState<"chart" | "calendar">("chart");
+  const [calendarKey, setCalendarKey] = useState(0);
   const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -150,6 +161,18 @@ function Home({ email }: { email: string }) {
       alive = false;
     };
   }, [security.market, security.symbol]);
+
+  // 載入目前證券的筆記
+  useEffect(() => {
+    if (!data) return;
+    let alive = true;
+    fetchNotes(security.market, security.symbol, data.from, data.to).then(
+      (n) => alive && setNotes(n),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [data, security.market, security.symbol]);
 
   // 若目前證券在收藏內，補上名稱
   useEffect(() => {
@@ -190,6 +213,7 @@ function Home({ email }: { email: string }) {
   function select(s: { market: string; symbol: string; name?: string }) {
     const next: Current = { market: s.market, symbol: s.symbol, name: s.name ?? s.symbol };
     setSecurity(next);
+    setDrawerDate(null);
     history.replaceState(null, "", `${location.pathname}?s=${next.market}:${next.symbol}`);
   }
 
@@ -212,6 +236,33 @@ function Home({ email }: { email: string }) {
   const n = (v: number, digits = 2) =>
     v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+  const noteByDate = useMemo(() => new Map(notes.map((x) => [x.date, x])), [notes]);
+  const noteDates = useMemo(() => notes.map((x) => x.date), [notes]);
+
+  const drawerIndex = drawerDate ? bars.findIndex((b) => b.date === drawerDate) : -1;
+  const drawerBar = drawerIndex >= 0 ? bars[drawerIndex] : null;
+  const drawerPrev = drawerIndex > 0 ? bars[drawerIndex - 1].close : null;
+
+  async function handleSaveNote(values: Omit<NoteInput, "market" | "symbol" | "date">) {
+    if (!drawerDate) return;
+    await saveNote({
+      market: security.market,
+      symbol: security.symbol,
+      date: drawerDate,
+      ...values,
+    });
+    if (data) {
+      setNotes(await fetchNotes(security.market, security.symbol, data.from, data.to));
+    }
+    setCalendarKey((k) => k + 1);
+  }
+
+  function openFromCalendar(item: CalendarNote) {
+    select({ market: item.market, symbol: item.symbol });
+    setView("chart");
+    setDrawerDate(item.date);
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -223,6 +274,17 @@ function Home({ email }: { email: string }) {
           ☰
         </button>
         <span className="brand small">台股筆記</span>
+        <div className="seg" style={{ marginLeft: 12 }}>
+          <button className={view === "chart" ? "active" : ""} onClick={() => setView("chart")}>
+            圖表
+          </button>
+          <button
+            className={view === "calendar" ? "active" : ""}
+            onClick={() => setView("calendar")}
+          >
+            日曆
+          </button>
+        </div>
         <span className="grow" />
         <span className="muted small">{email}</span>
         <button className="ghost" onClick={() => signOut()}>
@@ -241,8 +303,10 @@ function Home({ email }: { email: string }) {
               reloadFavorites();
             }}
             onReorder={async (ids) => {
-              setFavorites((prev) =>
-                ids.map((id) => prev.find((f) => f.id === id)).filter((f): f is Favorite => !!f),
+              setFavorites((prevFavs) =>
+                ids
+                  .map((id) => prevFavs.find((f) => f.id === id))
+                  .filter((f): f is Favorite => !!f),
               );
               await orderFavorites(ids);
             }}
@@ -250,119 +314,142 @@ function Home({ email }: { email: string }) {
         )}
 
         <div className="main">
-          <section className="symbol-bar">
-            <span className="symbol-name">{security.name}</span>
-            <span className="symbol-code">({security.symbol})</span>
-            <button
-              className={`star${fav ? " on" : ""}`}
-              title={fav ? "移除收藏" : "加入收藏"}
-              onClick={toggleFavorite}
-            >
-              {fav ? "★" : "☆"}
-            </button>
-            {security.symbol !== "0000" && <span className="tag warn">未還原</span>}
-            {last && (
-              <>
-                <span className={`price ${dir}`}>{n(last.close)}</span>
-                <span className={`change ${dir}`}>
-                  {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))} ({pct.toFixed(2)}%)
-                </span>
-                <span className="muted small">
-                  開 {n(last.open)}　高 {n(last.high)}　低 {n(last.low)}　成交金額{" "}
-                  {Math.round(last.turnover / 1e8).toLocaleString()} 億
-                </span>
-              </>
-            )}
-            <span className="grow" />
-            {data && (
-              <span className="muted small">
-                {data.provider}｜{data.from} ~ {data.to}
-                {data.cached ? "｜快取" : ""}
-              </span>
-            )}
-          </section>
-
-          <div className="toolbar">
-            <span className="toolbar-label">均線</span>
-            {MA_PERIODS.map((period) => {
-              const key = String(period);
-              const on = !!prefs.ma[key];
-              return (
-                <label
-                  key={period}
-                  className="chk"
-                  style={{ color: on ? MA_COLORS[period] : "var(--muted)" }}
+          {view === "chart" ? (
+            <>
+              <section className="symbol-bar">
+                <span className="symbol-name">{security.name}</span>
+                <span className="symbol-code">({security.symbol})</span>
+                <button
+                  className={`star${fav ? " on" : ""}`}
+                  title={fav ? "移除收藏" : "加入收藏"}
+                  onClick={toggleFavorite}
                 >
+                  {fav ? "★" : "☆"}
+                </button>
+                {security.symbol !== "0000" && <span className="tag warn">未還原</span>}
+                {last && (
+                  <>
+                    <span className={`price ${dir}`}>{n(last.close)}</span>
+                    <span className={`change ${dir}`}>
+                      {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))} ({pct.toFixed(2)}%)
+                    </span>
+                    <span className="muted small">
+                      開 {n(last.open)}　高 {n(last.high)}　低 {n(last.low)}　成交金額{" "}
+                      {Math.round(last.turnover / 1e8).toLocaleString()} 億
+                    </span>
+                  </>
+                )}
+                <span className="grow" />
+                {data && (
+                  <span className="muted small">
+                    {data.provider}｜{data.from} ~ {data.to}
+                    {data.cached ? "｜快取" : ""}
+                  </span>
+                )}
+              </section>
+
+              <div className="toolbar">
+                <span className="toolbar-label">均線</span>
+                {MA_PERIODS.map((period) => {
+                  const key = String(period);
+                  const on = !!prefs.ma[key];
+                  return (
+                    <label
+                      key={period}
+                      className="chk"
+                      style={{ color: on ? MA_COLORS[period] : "var(--muted)" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() =>
+                          update((p) => ({ ...p, ma: { ...p.ma, [key]: !p.ma[key] } }))
+                        }
+                      />
+                      MA{period}
+                    </label>
+                  );
+                })}
+
+                <span className="toolbar-sep" />
+                <span className="toolbar-label">面板</span>
+                <label className="chk">
                   <input
                     type="checkbox"
-                    checked={on}
-                    onChange={() =>
-                      update((p) => ({ ...p, ma: { ...p.ma, [key]: !p.ma[key] } }))
-                    }
+                    checked={prefs.vol}
+                    onChange={() => update((p) => ({ ...p, vol: !p.vol }))}
                   />
-                  MA{period}
+                  成交量
                 </label>
-              );
-            })}
+                <label className="chk">
+                  <input
+                    type="checkbox"
+                    checked={prefs.macd}
+                    onChange={() => update((p) => ({ ...p, macd: !p.macd }))}
+                  />
+                  MACD
+                </label>
+                <label className="chk">
+                  <input
+                    type="checkbox"
+                    checked={prefs.kdj}
+                    onChange={() => update((p) => ({ ...p, kdj: !p.kdj }))}
+                  />
+                  KD
+                </label>
 
-            <span className="toolbar-sep" />
-            <span className="toolbar-label">面板</span>
-            <label className="chk">
-              <input
-                type="checkbox"
-                checked={prefs.vol}
-                onChange={() => update((p) => ({ ...p, vol: !p.vol }))}
-              />
-              成交量
-            </label>
-            <label className="chk">
-              <input
-                type="checkbox"
-                checked={prefs.macd}
-                onChange={() => update((p) => ({ ...p, macd: !p.macd }))}
-              />
-              MACD
-            </label>
-            <label className="chk">
-              <input
-                type="checkbox"
-                checked={prefs.kdj}
-                onChange={() => update((p) => ({ ...p, kdj: !p.kdj }))}
-              />
-              KD
-            </label>
+                <span className="toolbar-sep" />
+                <span className="toolbar-label">區間</span>
+                <div className="seg">
+                  {RANGES.map(([label, value]) => (
+                    <button
+                      key={label}
+                      className={prefs.range === value ? "active" : ""}
+                      onClick={() => update((p) => ({ ...p, range: value }))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <span className="grow" />
+                <span className="muted small">點 K 線可寫當天筆記</span>
+              </div>
 
-            <span className="toolbar-sep" />
-            <span className="toolbar-label">區間</span>
-            <div className="seg">
-              {RANGES.map(([label, value]) => (
-                <button
-                  key={label}
-                  className={prefs.range === value ? "active" : ""}
-                  onClick={() => update((p) => ({ ...p, range: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="chart-wrap">
-            {loading && <div className="placeholder muted">載入中…</div>}
-            {!loading && error && <div className="placeholder error">{error}</div>}
-            {!loading && !error && bars.length > 0 && (
-              <PriceChart
-                bars={bars}
-                prefs={prefs}
-                symbol={`${security.market}:${security.symbol}`}
-              />
-            )}
-          </div>
+              <div className="chart-wrap">
+                {loading && <div className="placeholder muted">載入中…</div>}
+                {!loading && error && <div className="placeholder error">{error}</div>}
+                {!loading && !error && bars.length > 0 && (
+                  <PriceChart
+                    bars={bars}
+                    prefs={prefs}
+                    symbol={`${security.market}:${security.symbol}`}
+                    noteDates={noteDates}
+                    onPickDate={(d) => setDrawerDate(d)}
+                  />
+                )}
+              </div>
+            </>
+          ) : (
+            <CalendarView onOpen={openFromCalendar} refreshKey={calendarKey} />
+          )}
 
           <footer className="footer muted small">
             資料僅供參考，非投資建議。資料來源：FinMind／臺灣證券交易所。
           </footer>
         </div>
+
+        <JournalDrawer
+          open={view === "chart" && drawerDate !== null}
+          market={security.market}
+          symbol={security.symbol}
+          name={security.name}
+          date={drawerDate}
+          note={drawerDate ? noteByDate.get(drawerDate) ?? null : null}
+          bar={drawerBar}
+          prevClose={drawerPrev}
+          onSave={handleSaveNote}
+          onClose={() => setDrawerDate(null)}
+        />
       </div>
     </div>
   );

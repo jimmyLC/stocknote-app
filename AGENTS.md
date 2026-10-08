@@ -116,3 +116,5 @@ Secrets / vars: `BETTER_AUTH_SECRET` (Worker secret), `BETTER_AUTH_URL` (plain `
 - The TWSE fallback paths were validated against the live field shapes (ROC dates, comma numbers, OHLC in `MI_5MINS_HIST`, volume/turnover in `FMTQIK`) but have **not** been exercised end-to-end (FinMind has always answered first).
 - `worker/auth.ts` opens sign-up only when `ALLOW_SIGNUP=1` (local dev); production is closed (single user).
 - Quarterly-triggering note: the FinMind token, if added, must be a Worker secret and never sent to the browser.
+- **Adding `FINMIND_TOKEN` in the dashboard must be Type = Secret, not Variable.** Plain-text Variables added in the dashboard are **overwritten by the next `wrangler deploy`** (the deploy's vars come from `wrangler.jsonc`); encrypted Secrets survive deploys. This bit us once: a dashboard Variable was wiped by a CI deploy.
+- FinMind's free tier rate-limits per **IP** for anonymous callers, and Cloudflare Worker egress IPs are shared, so anonymous 402s ("Requests reach the upper limit") can happen even for light use. A free account token makes the 600/hr quota account-scoped and reliable.

@@ -121,10 +121,14 @@ export default function PriceChart({
   bars,
   prefs,
   symbol,
+  noteDates,
+  onPickDate,
 }: {
   bars: Bar[];
   prefs: Prefs;
   symbol: string;
+  noteDates: string[];
+  onPickDate: (date: string) => void;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -204,6 +208,50 @@ export default function PriceChart({
   useEffect(() => {
     if (chartRef.current) applyPane(chartRef.current, prefs.kdj, PANES.kdj);
   }, [prefs.kdj]);
+
+  // 點 K 線 → 回報該日日期（開日誌抽屜）
+  const pickRef = useRef(onPickDate);
+  pickRef.current = onPickDate;
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const handler = (data?: unknown) => {
+      const d = data as { timestamp?: number; kLineData?: { timestamp?: number } } | undefined;
+      const ts = d?.timestamp ?? d?.kLineData?.timestamp;
+      if (typeof ts !== "number") return;
+      pickRef.current(new Date(ts).toISOString().slice(0, 10));
+    };
+    chart.subscribeAction("onCandleBarClick", handler);
+    return () => chart.unsubscribeAction("onCandleBarClick", handler);
+  }, []);
+
+  // 有筆記的日子在圖上做記號
+  const noteKey = noteDates.join(",");
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.removeOverlay({ name: "simpleAnnotation" });
+    if (!noteKey) return;
+    const byDate = new Map(bars.map((b) => [b.date, b]));
+    for (const date of noteKey.split(",")) {
+      const bar = byDate.get(date);
+      if (!bar) continue;
+      const [y, m, d] = date.split("-").map(Number);
+      chart.createOverlay({
+        id: `note-${date}`,
+        name: "simpleAnnotation",
+        paneId: "candle_pane",
+        points: [{ timestamp: Date.UTC(y, m - 1, d), value: bar.high }],
+        extendData: "📝",
+        lock: true,
+        styles: {
+          line: { color: "#4f8cff", style: "dashed" },
+          polygon: { color: "#4f8cff" },
+          text: { color: "#4f8cff", size: 12 },
+        },
+      });
+    }
+  }, [noteKey, bars]);
 
   // 顯示區間
   useEffect(() => {

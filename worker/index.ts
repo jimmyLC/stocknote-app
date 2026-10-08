@@ -140,6 +140,98 @@ app.patch("/api/favorites/order", async (c) => {
   return c.json({ ok: true });
 });
 
+// 交易日誌（一天一則、私人）
+app.get("/api/notes/calendar", async (c) => {
+  const month = c.req.query("month") ?? new Date().toISOString().slice(0, 7);
+  const { results } = await c.env.DB.prepare(
+    `select trade_date as date, market, symbol, title, mood
+     from journal_notes
+     where user_id = ? and substr(trade_date, 1, 7) = ?
+     order by trade_date`,
+  )
+    .bind(c.get("userId"), month)
+    .all();
+  return c.json({ notes: results });
+});
+
+app.get("/api/notes", async (c) => {
+  const market = (c.req.query("market") ?? "TW").toUpperCase();
+  const symbol = c.req.query("symbol") ?? "0000";
+  const from = c.req.query("from") ?? "0000-01-01";
+  const to = c.req.query("to") ?? "9999-12-31";
+  const { results } = await c.env.DB.prepare(
+    `select trade_date as date, title, body, tags, mood, updated_at as updatedAt
+     from journal_notes
+     where user_id = ? and market = ? and symbol = ? and trade_date between ? and ?
+     order by trade_date`,
+  )
+    .bind(c.get("userId"), market, symbol, from, to)
+    .all<{ tags: string | null }>();
+  return c.json({
+    notes: results.map((r) => ({
+      ...r,
+      tags: r.tags ? (JSON.parse(r.tags) as string[]) : [],
+    })),
+  });
+});
+
+app.put("/api/notes/:date", async (c) => {
+  const date = c.req.param("date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: "日期格式錯誤" }, 400);
+  const input = await c.req
+    .json<{
+      market?: string;
+      symbol?: string;
+      title?: string;
+      body?: string;
+      tags?: string[];
+      mood?: string;
+    }>()
+    .catch(() => ({}) as Record<string, never>);
+  const market = (input.market ?? "TW").toUpperCase();
+  const symbol = input.symbol ?? "0000";
+  const title = (input.title ?? "").trim();
+  const noteBody = (input.body ?? "").trim();
+  const tags = Array.isArray(input.tags) ? input.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+  const mood = (input.mood ?? "").trim();
+  const userId = c.get("userId");
+
+  // 全部清空就刪掉這一天的筆記
+  if (!title && !noteBody && tags.length === 0 && !mood) {
+    await c.env.DB.prepare(
+      "delete from journal_notes where user_id = ? and market = ? and symbol = ? and trade_date = ?",
+    )
+      .bind(userId, market, symbol, date)
+      .run();
+    return c.json({ ok: true, deleted: true });
+  }
+
+  const now = Date.now();
+  await c.env.DB.prepare(
+    `insert into journal_notes
+       (id, user_id, market, symbol, trade_date, title, body, tags, mood, created_at, updated_at)
+     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     on conflict(user_id, market, symbol, trade_date) do update set
+       title = excluded.title, body = excluded.body, tags = excluded.tags,
+       mood = excluded.mood, updated_at = excluded.updated_at`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      userId,
+      market,
+      symbol,
+      date,
+      title,
+      noteBody,
+      JSON.stringify(tags),
+      mood,
+      now,
+      now,
+    )
+    .run();
+  return c.json({ ok: true });
+});
+
 // 其餘交給靜態資源（SPA 由 not_found_handling: single-page-application 處理）
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 

@@ -102,3 +102,59 @@ export async function orderFavorites(ids: string[]): Promise<void> {
     body: JSON.stringify({ ids }),
   });
 }
+
+export interface Note {
+  date: string;
+  title: string;
+  body: string | null;
+  tags: string[];
+  mood: string | null;
+  updatedAt?: number;
+}
+
+export interface CalendarNote {
+  date: string;
+  market: string;
+  symbol: string;
+  title: string;
+  mood: string | null;
+}
+
+export interface NoteInput {
+  market: string;
+  symbol: string;
+  date: string;
+  title: string;
+  body: string;
+  tags: string[];
+  mood: string;
+}
+
+export async function fetchNotes(
+  market: string,
+  symbol: string,
+  from: string,
+  to: string,
+): Promise<Note[]> {
+  const params = new URLSearchParams({ market, symbol, from, to });
+  const res = await fetch(`/api/notes?${params.toString()}`, { credentials: "same-origin" });
+  const data = await json<{ notes: Note[] }>(res);
+  return data?.notes ?? [];
+}
+
+export async function saveNote(input: NoteInput): Promise<void> {
+  await fetch(`/api/notes/${encodeURIComponent(input.date)}`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchCalendar(month: string): Promise<CalendarNote[]> {
+  const res = await fetch(`/api/notes/calendar?month=${encodeURIComponent(month)}`, {
+    credentials: "same-origin",
+  });
+  const data = await json<{ notes: CalendarNote[] }>(res);
+  return data?.notes ?? [];
+}

@@ -433,3 +433,151 @@ button.icon {
   color: #e0a35a;
   border-color: #5a4a2a;
 }
+
+/* 日誌抽屜 */
+.drawer {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drawer-title {
+  font-weight: 600;
+}
+
+.day-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.day-quote .up {
+  color: #ef5350;
+}
+
+.day-quote .down {
+  color: #26c281;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  background: #101013;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 11px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.field textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.grow-field {
+  flex: 1;
+}
+
+.mood-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mood {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.mood.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 日曆 */
+.calendar {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.calendar-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-month {
+  font-weight: 600;
+}
+
+.calendar-list {
+  padding: 4px 8px 12px;
+}
+
+.calendar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.calendar-item:hover {
+  background: #1c1c22;
+}
+
+.cal-date,
+.cal-sym {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
