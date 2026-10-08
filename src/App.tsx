@@ -116,7 +116,7 @@ function Home({ email }: { email: string }) {
   const [loading, setLoading] = useState(true);
   const [prefs, setPrefs] = useState<Prefs>(() => loadLocalPrefs() ?? DEFAULT_PREFS);
   const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 640);
   const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
