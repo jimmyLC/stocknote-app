@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: M1 (skeleton + Better Auth login + Cloudflare deploy config) is written and verified locally; not deployed yet.** See `進度.md` for milestones.
+- **Status: M1 done — live at https://stock.example.com (skeleton + Better Auth login + D1).** See `進度.md` for milestones.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
