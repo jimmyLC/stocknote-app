@@ -6,10 +6,10 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 **stocknote-app** is a personal Taiwan-stock web app / PWA. It shows the **Taiwan Stock Exchange Weighted Index (加權指數, `TW:0000`)** with a daily technical-analysis chart (candlesticks + moving averages + volume + MACD + KD), keeps a **private trading journal** (one note per security per trading day), and manages a **favorites** list. It is built to grow from the index to individual Taiwan stocks, and later to US stocks (V2/V3).
 
 - **Personal, non-commercial, login-gated.** Not open to the public for now; every route requires sign-in. Non-commercial only (this is what the FinMind free tier allows).
-- **Cloudflare-first:** Cloudflare Pages (static PWA) + Pages Functions / Worker (`/api/*`) + Cloudflare D1 + Cache API.
+- **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: not built yet.** This repo currently holds planning docs only. See `進度.md` for milestones.
+- **Status: M1 (skeleton + Better Auth login + Cloudflare deploy config) is written and verified locally; not deployed yet.** See `進度.md` for milestones.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
@@ -17,17 +17,18 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 - Never state prices, limits or API facts from memory; check the official source first. Report failures faithfully; a feature is "verified" only if you saw it work.
 - Do not delete data or force-push. **`git push` to `main` deploys the site** (see Deploying); only push when the change is meant to go live.
 
-## Commands (planned — filled in at M1)
+## Commands
 ```bash
 npm install
-npm run dev        # vite --host
-npm run build      # tsc -b && vite build   (CI runs exactly this)
-npx tsc -b         # type-check only
-npm run deploy     # build + wrangler deploy  (normally CI does this on push)
-npx wrangler dev                              # Worker + /api/* locally
-npx wrangler d1 migrations apply stocknote-db --local    # local D1
-npx wrangler d1 migrations apply stocknote-db --remote   # deployed D1
+npm run dev        # Vite SPA on :5173 (proxies /api -> :8787)
+npm run dev:api    # wrangler dev (Worker + local D1) on :8787 — run alongside `npm run dev`
+npm run typecheck  # tsc -p tsconfig.json && tsc -p tsconfig.worker.json
+npm run build      # typecheck + vite build   (CI runs exactly this)
+npm run deploy     # build + wrangler deploy
+npm run db:local   # wrangler d1 migrations apply stocknote-db --local
+npm run db:remote  # wrangler d1 migrations apply stocknote-db --remote
 ```
+Local secrets live in `.dev.vars` (git-ignored; copy from `.dev.vars.example`): `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and `BETTER_AUTH_URL=http://localhost:5173`. Note `wrangler dev` uses the `routes` host `stock.example.com` as the local Host, so `worker/auth.ts` lists the dev origins in `trustedOrigins` as well.
 
 ## Architecture (decided)
 Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded **Traditional Chinese**. The browser only ever calls our own `/api/*`; the Worker is the only thing that talks to upstream data providers.
@@ -36,8 +37,8 @@ Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded 
 |---|---|
 | Frontend | React 19 + TS + Vite + `vite-plugin-pwa` |
 | Chart | **klinecharts 10.0.3** behind a thin `ChartAdapter` (isolates the dependency — klinecharts is a one-maintainer project) |
-| Host | Cloudflare **Pages**, custom domain `stock.example.com` |
-| API | Cloudflare **Pages Functions / Worker** (`/api/*`) |
+| Host | Cloudflare **Workers (static assets)**, custom domain `stock.example.com` |
+| API | same Worker, `/api/*` (`run_worker_first: ["/api/*"]`) |
 | DB | Cloudflare **D1** (SQLite) |
 | Auth | **Better Auth** (D1-native, runs on the edge) |
 | Client cache | **Dexie** (IndexedDB) |
@@ -88,9 +89,14 @@ GET  /api/notes/calendar?month=
 Secrets (set by Jimmy in the Cloudflare dashboard; never print them): `FINMIND_TOKEN`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`.
 
 ## Deploying
-- **Site:** push to `main` → GitHub Actions builds and runs `wrangler deploy` (~30 s). Check with `gh run list -R jimmyLC/stocknote-app -L1`.
-- **D1 migrations:** `npx wrangler d1 migrations apply stocknote-db --remote`.
-- **Dashboard steps** (Cloudflare Pages project, D1 database, custom domain `stock.example.com`, secrets) are done by Jimmy / Claude Code with the Chrome tools, with Jimmy approving account-level steps.
+- **Site:** push to `main` → GitHub Actions builds and runs `npx wrangler deploy` (~30 s; needs the repo secret `CLOUDFLARE_API_TOKEN`). Check with `gh run list -R jimmyLC/stocknote-app -L1`.
+- **D1 migrations:** `npx wrangler d1 migrations apply stocknote-db --remote` (also run automatically in CI before deploy).
+- **One-time bootstrap** (account-level; do only with Jimmy's approval):
+  1. `npx wrangler d1 create stocknote-db` → paste the returned `database_id` into `wrangler.jsonc` (currently `REPLACE_WITH_D1_DATABASE_ID`).
+  2. `npx wrangler secret put BETTER_AUTH_SECRET` (≥ 32 chars).
+  3. `npx wrangler deploy` — creates the Worker and, via `routes: [{ pattern: "stock.example.com", custom_domain: true }]`, the DNS record + certificate automatically.
+  4. Add the repo secret `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit + Workers Routes:Edit + D1:Edit + Zone:Read) so CI can deploy.
+- `BETTER_AUTH_URL` is a plain `var` in `wrangler.jsonc` (`https://stock.example.com`); `.dev.vars` overrides it locally.
 
 ## Conventions
 - Match the surrounding code: small modules, comments only where the "why" is not obvious, no new dependency without a reason.
