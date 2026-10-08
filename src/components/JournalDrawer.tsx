@@ -15,7 +15,9 @@ interface Props {
   bar: Bar | null;
   prevClose: number | null;
   onDateChange: (date: string) => void;
+  onStep: (delta: number) => void;
   onSave: (input: Omit<NoteInput, "market" | "symbol" | "date">) => void;
+  onDelete: () => void;
   onClose: () => void;
 }
 
@@ -30,7 +32,9 @@ export default function JournalDrawer({
   bar,
   prevClose,
   onDateChange,
+  onStep,
   onSave,
+  onDelete,
   onClose,
 }: Props) {
   const [title, setTitle] = useState("");
@@ -45,11 +49,6 @@ export default function JournalDrawer({
     setMood(note?.mood ?? "");
   }, [note, date]);
 
-  if (!open || !date) return null;
-
-  const change = bar && prevClose ? bar.close - prevClose : null;
-  const pct = change && prevClose ? (change / prevClose) * 100 : null;
-
   function save() {
     onSave({
       title,
@@ -62,6 +61,31 @@ export default function JournalDrawer({
     });
     onClose();
   }
+
+  // 快捷鍵：⌘/Ctrl+S 儲存、Esc 關閉、←/→ 換日期（在輸入框內不攔 ←/→）
+  useEffect(() => {
+    if (!open || !date) return;
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const typing = tag === "INPUT" || tag === "TEXTAREA";
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        save();
+      } else if (e.key === "Escape") {
+        onClose();
+      } else if (!typing && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        onStep(e.key === "ArrowLeft" ? -1 : 1);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, date, title, body, tagsText, mood, onClose, onStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!open || !date) return null;
+
+  const change = bar && prevClose ? bar.close - prevClose : null;
+  const pct = change && prevClose ? (change / prevClose) * 100 : null;
 
   return (
     <aside className="drawer">
@@ -143,10 +167,13 @@ export default function JournalDrawer({
 
       <div className="drawer-actions">
         <button onClick={save}>儲存</button>
+        {note && (
+          <button className="ghost danger" onClick={onDelete}>
+            刪除
+          </button>
+        )}
         <span className="grow" />
-        <span className="muted small">
-          {note ? "已有筆記，儲存會覆寫" : "（清空全部欄位並儲存＝刪除）"}
-        </span>
+        <span className="muted small">⌘/Ctrl+S 儲存　←/→ 換日期</span>
       </div>
     </aside>
   );

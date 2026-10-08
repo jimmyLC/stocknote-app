@@ -590,3 +590,57 @@ button.primary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.calendar-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 380px;
+  background: #101013;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 11px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+button.danger {
+  color: #ff6b6b;
+  border-color: #5a2a2a;
+}
+
+button.danger:hover {
+  color: #fff;
+  background: #b33;
+  border-color: #b33;
+}
+
+/* 窄螢幕：側邊欄與日誌抽屜改成覆蓋式，不擠壓圖表 */
+@media (max-width: 720px) {
+  .body {
+    position: relative;
+  }
+
+  .sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.55);
+  }
+
+  .drawer {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(360px, 90vw);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.55);
+  }
+
+  .calendar-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

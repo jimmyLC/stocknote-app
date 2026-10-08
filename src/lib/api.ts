@@ -158,3 +158,38 @@ export async function fetchCalendar(month: string): Promise<CalendarNote[]> {
   const data = await json<{ notes: CalendarNote[] }>(res);
   return data?.notes ?? [];
 }
+
+export interface NoteSearchResult {
+  date: string;
+  market: string;
+  symbol: string;
+  name: string;
+  title: string;
+  mood: string | null;
+}
+
+export async function searchNotes(q: string): Promise<NoteSearchResult[]> {
+  const res = await fetch(`/api/notes/search?q=${encodeURIComponent(q)}`, {
+    credentials: "same-origin",
+  });
+  const data = await json<{ notes: NoteSearchResult[] }>(res);
+  return data?.notes ?? [];
+}
+
+export interface ExportedNote {
+  date: string;
+  market: string;
+  symbol: string;
+  name: string;
+  title: string;
+  body: string | null;
+  tags: string[];
+  mood: string | null;
+  updatedAt: number;
+}
+
+export async function exportNotes(): Promise<ExportedNote[]> {
+  const res = await fetch("/api/notes/export", { credentials: "same-origin" });
+  const data = await json<{ notes: ExportedNote[] }>(res);
+  return data?.notes ?? [];
+}

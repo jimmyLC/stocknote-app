@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useSession, signIn, signOut } from "./lib/auth-client";
 import {
   addFavorite,
@@ -9,13 +18,11 @@ import {
   removeFavorite,
   saveNote,
   searchSecurities,
-  type CalendarNote,
   type Favorite,
   type Note,
   type NoteInput,
   type OhlcvResponse,
 } from "./lib/api";
-import PriceChart from "./components/PriceChart";
 import Sidebar from "./components/Sidebar";
 import JournalDrawer from "./components/JournalDrawer";
 import CalendarView from "./components/CalendarView";
@@ -23,6 +30,7 @@ import {
   DEFAULT_PREFS,
   MA_COLORS,
   MA_PERIODS,
+  PERIODS,
   RANGES,
   fetchPrefs,
   loadLocalPrefs,
@@ -36,6 +44,9 @@ interface Current {
   symbol: string;
   name: string;
 }
+
+// 圖表（klinecharts）延遲載入，登入頁不用下載它。
+const PriceChart = lazy(() => import("./components/PriceChart"));
 
 const DEFAULT_SECURITY: Current = { market: "TW", symbol: "0000", name: "加權指數" };
 
@@ -243,6 +254,13 @@ function Home({ email }: { email: string }) {
   const drawerBar = drawerIndex >= 0 ? bars[drawerIndex] : null;
   const drawerPrev = drawerIndex > 0 ? bars[drawerIndex - 1].close : null;
 
+  async function refreshNotes() {
+    if (data) {
+      setNotes(await fetchNotes(security.market, security.symbol, data.from, data.to));
+    }
+    setCalendarKey((k) => k + 1);
+  }
+
   async function handleSaveNote(values: Omit<NoteInput, "market" | "symbol" | "date">) {
     if (!drawerDate) return;
     await saveNote({
@@ -251,13 +269,33 @@ function Home({ email }: { email: string }) {
       date: drawerDate,
       ...values,
     });
-    if (data) {
-      setNotes(await fetchNotes(security.market, security.symbol, data.from, data.to));
-    }
-    setCalendarKey((k) => k + 1);
+    await refreshNotes();
   }
 
-  function openFromCalendar(item: CalendarNote) {
+  async function handleDeleteNote() {
+    if (!drawerDate) return;
+    await saveNote({
+      market: security.market,
+      symbol: security.symbol,
+      date: drawerDate,
+      title: "",
+      body: "",
+      tags: [],
+      mood: "",
+    });
+    setDrawerDate(null);
+    await refreshNotes();
+  }
+
+  function stepDate(delta: number) {
+    if (!drawerDate) return;
+    const i = bars.findIndex((b) => b.date === drawerDate);
+    if (i < 0) return;
+    const j = Math.min(bars.length - 1, Math.max(0, i + delta));
+    setDrawerDate(bars[j].date);
+  }
+
+  function openFromCalendar(item: { date: string; market: string; symbol: string }) {
     select({ market: item.market, symbol: item.symbol });
     setView("chart");
     setDrawerDate(item.date);
@@ -420,6 +458,19 @@ function Home({ email }: { email: string }) {
                     </button>
                   ))}
                 </div>
+                <span className="toolbar-sep" />
+                <span className="toolbar-label">週期</span>
+                <div className="seg">
+                  {PERIODS.map(([label, value]) => (
+                    <button
+                      key={value}
+                      className={prefs.period === value ? "active" : ""}
+                      onClick={() => update((p) => ({ ...p, period: value }))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <span className="grow" />
                 <span className="muted small">點 K 線、或用上方「＋ 寫筆記」來記錄</span>
               </div>
@@ -428,13 +479,15 @@ function Home({ email }: { email: string }) {
                 {loading && <div className="placeholder muted">載入中…</div>}
                 {!loading && error && <div className="placeholder error">{error}</div>}
                 {!loading && !error && bars.length > 0 && (
-                  <PriceChart
-                    bars={bars}
-                    prefs={prefs}
-                    symbol={`${security.market}:${security.symbol}`}
-                    noteDates={noteDates}
-                    onPickDate={(d) => setDrawerDate(d)}
-                  />
+                  <Suspense fallback={<div className="placeholder muted">載入圖表中…</div>}>
+                    <PriceChart
+                      bars={bars}
+                      prefs={prefs}
+                      symbol={`${security.market}:${security.symbol}`}
+                      noteDates={noteDates}
+                      onPickDate={(d) => setDrawerDate(d)}
+                    />
+                  </Suspense>
                 )}
               </div>
             </>
@@ -459,7 +512,9 @@ function Home({ email }: { email: string }) {
           bar={drawerBar}
           prevClose={drawerPrev}
           onDateChange={(d) => setDrawerDate(d)}
+          onStep={stepDate}
           onSave={handleSaveNote}
+          onDelete={handleDeleteNote}
           onClose={() => setDrawerDate(null)}
         />
       </div>

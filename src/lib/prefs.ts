@@ -14,8 +14,11 @@ export const RANGES: Array<[string, number | null]> = [
   ["3M", 63],
   ["6M", 126],
   ["1Y", 250],
+  ["3Y", 750],
   ["全部", null],
 ];
+
+export type Period = "day" | "week" | "month";
 
 export interface Prefs {
   /** key 為均線週期的字串，例如 "5" */
@@ -25,7 +28,15 @@ export interface Prefs {
   kdj: boolean;
   /** 預設顯示根數；null = 全部 */
   range: number | null;
+  /** 週期：日 / 週 / 月 */
+  period: Period;
 }
+
+export const PERIODS: Array<[string, Period]> = [
+  ["日", "day"],
+  ["週", "week"],
+  ["月", "month"],
+];
 
 export const DEFAULT_PREFS: Prefs = {
   ma: Object.fromEntries(MA_PERIODS.map((p) => [String(p), true])),
@@ -33,6 +44,7 @@ export const DEFAULT_PREFS: Prefs = {
   macd: true,
   kdj: true,
   range: 250,
+  period: "day",
 };
 
 const LS_KEY = "stocknote.prefs";
@@ -40,10 +52,12 @@ const LS_KEY = "stocknote.prefs";
 function merge(prefs: unknown): Prefs {
   if (!prefs || typeof prefs !== "object") return { ...DEFAULT_PREFS };
   const p = prefs as Partial<Prefs>;
+  const period: Period = p.period === "week" || p.period === "month" ? p.period : "day";
   return {
     ...DEFAULT_PREFS,
     ...p,
     ma: { ...DEFAULT_PREFS.ma, ...(p.ma ?? {}) },
+    period,
   };
 }
 

@@ -140,6 +140,42 @@ app.patch("/api/favorites/order", async (c) => {
   return c.json({ ok: true });
 });
 
+// 交易日誌：搜尋 / 匯出（要在 /:date 之前）
+app.get("/api/notes/search", async (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  if (!q) return c.json({ notes: [] });
+  const like = `%${q}%`;
+  const { results } = await c.env.DB.prepare(
+    `select n.trade_date as date, n.market, n.symbol,
+            coalesce(s.name, n.symbol) as name, n.title, n.mood
+     from journal_notes n
+     left join securities s on s.market = n.market and s.symbol = n.symbol
+     where n.user_id = ? and (n.title like ? or n.body like ? or n.tags like ?)
+     order by n.trade_date desc
+     limit 100`,
+  )
+    .bind(c.get("userId"), like, like, like)
+    .all();
+  return c.json({ notes: results });
+});
+
+app.get("/api/notes/export", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `select n.trade_date as date, n.market, n.symbol,
+            coalesce(s.name, n.symbol) as name,
+            n.title, n.body, n.tags, n.mood, n.updated_at as updatedAt
+     from journal_notes n
+     left join securities s on s.market = n.market and s.symbol = n.symbol
+     where n.user_id = ?
+     order by n.trade_date`,
+  )
+    .bind(c.get("userId"))
+    .all<{ tags: string | null }>();
+  return c.json({
+    notes: results.map((r) => ({ ...r, tags: r.tags ? (JSON.parse(r.tags) as string[]) : [] })),
+  });
+});
+
 // 交易日誌（一天一則、私人）
 app.get("/api/notes/calendar", async (c) => {
   const month = c.req.query("month") ?? new Date().toISOString().slice(0, 7);

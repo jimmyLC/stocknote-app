@@ -1,14 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   init,
   dispose,
+  registerOverlay,
   type Chart,
   type DeepPartial,
   type KLineData,
   type Styles,
 } from "klinecharts";
 import type { Bar } from "../lib/api";
-import { MA_PERIODS, MA_COLORS, type Prefs } from "../lib/prefs";
+import { MA_PERIODS, MA_COLORS, type Period, type Prefs } from "../lib/prefs";
 
 // 台股慣例：紅漲綠跌（與標題列一致）。
 const UP = "#ef5350";
@@ -75,48 +76,99 @@ const CHART_STYLES: DeepPartial<Styles> = {
   },
 };
 
-function toKLine(bars: Bar[]): KLineData[] {
-  return bars.map((b) => {
-    const [y, m, d] = b.date.split("-").map(Number);
-    return {
-      timestamp: Date.UTC(y, m - 1, d),
+// 有筆記的日子：K 棒下方的小藍點
+registerOverlay({
+  name: "noteDot",
+  totalStep: 2,
+  createPointFigures: ({ coordinates }) => [
+    {
+      type: "circle",
+      attrs: { x: coordinates[0].x, y: coordinates[0].y, r: 3 },
+      styles: { style: "fill", color: "#4f8cff" },
+    },
+  ],
+});
+
+interface AggBar extends KLineData {
+  /** 這根（週／月）包含的交易日 */
+  dates: string[];
+  volume: number;
+  turnover: number;
+}
+
+function tsOf(date: string): number {
+  const [y, m, d] = date.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function weekStart(date: string): string {
+  const d = new Date(tsOf(date));
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 日 → 週／月聚合（開＝第一筆、高＝最高、低＝最低、收＝最後、量＝成交金額加總）。 */
+function aggregate(bars: Bar[], period: Period): AggBar[] {
+  if (period === "day") {
+    return bars.map((b) => ({
+      timestamp: tsOf(b.date),
       open: b.open,
       high: b.high,
       low: b.low,
       close: b.close,
-      // 依設計：圖上的「量」用成交金額（NTD），以 VOL 面板呈現。
       volume: b.turnover,
       turnover: b.turnover,
-    };
-  });
+      dates: [b.date],
+    }));
+  }
+  const groups = new Map<string, AggBar>();
+  for (const b of bars) {
+    const key = period === "week" ? weekStart(b.date) : b.date.slice(0, 7);
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        timestamp: tsOf(b.date),
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: 0,
+        turnover: 0,
+        dates: [],
+      };
+      groups.set(key, g);
+    }
+    g.high = Math.max(g.high, b.high);
+    g.low = Math.min(g.low, b.low);
+    g.close = b.close;
+    g.volume += b.turnover;
+    g.turnover += b.turnover;
+    g.timestamp = tsOf(b.date); // 以期間最後一個交易日為時間
+    g.dates.push(b.date);
+  }
+  return [...groups.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-interface Pane {
-  name: string;
-  paneId: string;
-  calcParams: number[];
-  height: number;
-  order: number;
-}
-
-const PANES: Record<"vol" | "macd" | "kdj", Pane> = {
-  vol: { name: "VOL", paneId: "volume_pane", calcParams: [5, 20], height: 100, order: 10 },
+const PANES: Record<"vol" | "macd" | "kdj", { name: string; paneId: string; calcParams: number[]; shortName?: string; height: number; order: number }> = {
+  vol: { name: "VOL", paneId: "volume_pane", calcParams: [5, 20], shortName: "成交金額", height: 100, order: 10 },
   macd: { name: "MACD", paneId: "macd_pane", calcParams: [12, 26, 9], height: 120, order: 20 },
   kdj: { name: "KDJ", paneId: "kdj_pane", calcParams: [9, 3, 3], height: 120, order: 30 },
 };
 
-function applyPane(chart: Chart, enabled: boolean, pane: Pane) {
+function applyPane(chart: Chart, enabled: boolean, pane: (typeof PANES)["vol"]) {
   chart.removeIndicator({ paneId: pane.paneId });
   if (enabled) {
-    chart.createIndicator({ name: pane.name, paneId: pane.paneId, calcParams: pane.calcParams });
+    chart.createIndicator({
+      name: pane.name,
+      paneId: pane.paneId,
+      calcParams: pane.calcParams,
+      ...(pane.shortName ? { shortName: pane.shortName } : {}),
+    });
     chart.setPaneOptions({ id: pane.paneId, height: pane.height, order: pane.order });
   }
 }
 
-/**
- * klinecharts v10：K線 + 均線 + 成交量 + MACD + KD。
- * 外層刻意保持薄，將來換圖表庫只改這裡。
- */
 export default function PriceChart({
   bars,
   prefs,
@@ -132,7 +184,14 @@ export default function PriceChart({
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<Chart | null>(null);
-  const dataRef = useRef<KLineData[]>([]);
+
+  const series = useMemo(() => aggregate(bars, prefs.period), [bars, prefs.period]);
+  const seriesRef = useRef(series);
+  seriesRef.current = series;
+  const noteSetRef = useRef<Set<string>>(new Set());
+  noteSetRef.current = new Set(noteDates);
+  const pickRef = useRef(onPickDate);
+  pickRef.current = onPickDate;
 
   const maPeriods = MA_PERIODS.filter((p) => prefs.ma[String(p)]);
   const maKey = maPeriods.join(",");
@@ -155,8 +214,6 @@ export default function PriceChart({
     if (!chart) return;
     chartRef.current = chart;
 
-    chart.setPeriod({ span: 1, type: "day" });
-
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
 
@@ -167,17 +224,20 @@ export default function PriceChart({
     };
   }, []);
 
-  // 資料 / 代號
+  // 資料 / 代號 / 週期
   useEffect(() => {
-    dataRef.current = toKLine(bars);
     const chart = chartRef.current;
     if (!chart) return;
     chart.setSymbol({ ticker: symbol, pricePrecision: 2, volumePrecision: 0 });
+    chart.setPeriod({
+      span: 1,
+      type: prefs.period === "week" ? "week" : prefs.period === "month" ? "month" : "day",
+    });
     chart.setDataLoader({
-      getBars: ({ callback }) => callback(dataRef.current, false),
+      getBars: ({ callback }) => callback(series, false),
     });
     chart.resetData();
-  }, [bars, symbol]);
+  }, [series, symbol, prefs.period]);
 
   // 均線（可逐條開關）
   useEffect(() => {
@@ -209,56 +269,49 @@ export default function PriceChart({
     if (chartRef.current) applyPane(chartRef.current, prefs.kdj, PANES.kdj);
   }, [prefs.kdj]);
 
-  // 點 K 線 → 回報該日日期（開日誌抽屜）
-  const pickRef = useRef(onPickDate);
-  pickRef.current = onPickDate;
+  // 點 K 線 → 回報日期（週／月則回報該期間內第一個有筆記的日子，否則期間最後一天）
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
     const handler = (data?: unknown) => {
       const d = data as { timestamp?: number; kLineData?: { timestamp?: number } } | undefined;
-      const ts = d?.timestamp ?? d?.kLineData?.timestamp;
-      if (typeof ts !== "number") return;
-      pickRef.current(new Date(ts).toISOString().slice(0, 10));
+      const t = d?.timestamp ?? d?.kLineData?.timestamp;
+      if (typeof t !== "number") return;
+      const bar = seriesRef.current.find((b) => b.timestamp === t);
+      if (!bar) return;
+      const note = bar.dates.find((x) => noteSetRef.current.has(x));
+      pickRef.current(note ?? bar.dates[bar.dates.length - 1]);
     };
     chart.subscribeAction("onCandleBarClick", handler);
     return () => chart.unsubscribeAction("onCandleBarClick", handler);
   }, []);
 
-  // 有筆記的日子在圖上做記號
+  // 有筆記的日子在圖上做記號（週／月：期間內任一天有筆記就標）
   const noteKey = noteDates.join(",");
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    chart.removeOverlay({ name: "simpleAnnotation" });
+    chart.removeOverlay({ name: "noteDot" });
     if (!noteKey) return;
-    const byDate = new Map(bars.map((b) => [b.date, b]));
-    for (const date of noteKey.split(",")) {
-      const bar = byDate.get(date);
-      if (!bar) continue;
-      const [y, m, d] = date.split("-").map(Number);
+    const set = new Set(noteKey.split(","));
+    for (const bar of series) {
+      if (!bar.dates.some((x) => set.has(x))) continue;
       chart.createOverlay({
-        id: `note-${date}`,
-        name: "simpleAnnotation",
+        id: `note-${bar.timestamp}`,
+        name: "noteDot",
         paneId: "candle_pane",
-        points: [{ timestamp: Date.UTC(y, m - 1, d), value: bar.high }],
-        extendData: "📝",
+        points: [{ timestamp: bar.timestamp, value: bar.low }],
         lock: true,
-        styles: {
-          line: { color: "#4f8cff", style: "dashed" },
-          polygon: { color: "#4f8cff" },
-          text: { color: "#4f8cff", size: 12 },
-        },
       });
     }
-  }, [noteKey, bars]);
+  }, [noteKey, series]);
 
   // 顯示區間
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
     const apply = () => {
-      const total = dataRef.current.length;
+      const total = series.length;
       if (!total) return;
       const width = chart.getSize()?.width ?? elRef.current?.clientWidth ?? 800;
       const n = prefs.range ?? total;
@@ -267,7 +320,7 @@ export default function PriceChart({
     };
     const id = requestAnimationFrame(apply);
     return () => cancelAnimationFrame(id);
-  }, [prefs.range, bars]);
+  }, [prefs.range, series]);
 
   return <div ref={elRef} className="chart" />;
 }
