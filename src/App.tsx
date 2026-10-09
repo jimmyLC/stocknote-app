@@ -27,6 +27,7 @@ import {
 import Sidebar from "./components/Sidebar";
 import JournalDrawer from "./components/JournalDrawer";
 import CalendarView from "./components/CalendarView";
+import { getOhlcv, putOhlcv } from "./lib/offline";
 import {
   DEFAULT_PREFS,
   MA_COLORS,
@@ -142,6 +143,8 @@ function Home({ email }: { email: string }) {
   const [drawerNote, setDrawerNote] = useState<Note | null>(null);
   const [view, setView] = useState<"chart" | "calendar">("chart");
   const [calendarKey, setCalendarKey] = useState(0);
+  const [offline, setOffline] = useState(() => !navigator.onLine);
+  const [stale, setStale] = useState(false);
   const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -160,16 +163,61 @@ function Home({ email }: { email: string }) {
     });
   }, [reloadFavorites]);
 
-  // 載入目前證券的日線
+  // 離線狀態
+  useEffect(() => {
+    const goOnline = () => setOffline(false);
+    const goOffline = () => setOffline(true);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  // 載入目前證券的日線（先顯示離線快取，再抓最新）
   useEffect(() => {
     let alive = true;
+    const key = `${security.market}:${security.symbol}`;
     setLoading(true);
     setError("");
-    setData(null); // 清掉舊資料，避免標題顯示上一檔的數字
-    fetchOhlcv(security.market, security.symbol)
-      .then((d) => alive && setData(d))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : "讀取失敗"))
-      .finally(() => alive && setLoading(false));
+    setData(null);
+    setStale(false);
+
+    (async () => {
+      const cached = await getOhlcv<OhlcvResponse>(key);
+      if (!alive) return;
+      if (cached) {
+        setData(cached);
+        setStale(true);
+        setLoading(false);
+      }
+      try {
+        const fresh = await fetchOhlcv(security.market, security.symbol);
+        if (!alive) return;
+        setData(fresh);
+        setStale(false);
+        setError("");
+        setOffline(false);
+        void putOhlcv(key, fresh);
+      } catch (e) {
+        if (!alive) return;
+        const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+        if (isOffline) setOffline(true);
+        if (!cached) {
+          setError(
+            isOffline
+              ? "目前離線，且沒有這檔的快取資料"
+              : e instanceof Error
+                ? e.message
+                : "讀取失敗",
+          );
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
     return () => {
       alive = false;
     };
@@ -355,6 +403,12 @@ function Home({ email }: { email: string }) {
         </button>
       </header>
 
+      {offline && (
+        <div className="banner">
+          目前離線：圖表顯示上次的快取資料；交易日誌需要連線才能讀取與儲存。
+        </div>
+      )}
+
       <div className="body">
         {sidebarOpen && (
           <Sidebar
@@ -407,6 +461,7 @@ function Home({ email }: { email: string }) {
                   <span className="muted small">
                     {data.provider}｜{data.from} ~ {data.to}
                     {data.cached ? "｜快取" : ""}
+                    {stale ? "｜離線快取" : ""}
                   </span>
                 )}
                 <button
@@ -541,6 +596,7 @@ function Home({ email }: { email: string }) {
           note={drawerNote}
           bar={drawerBar}
           prevClose={drawerPrev}
+          offline={offline}
           onDateChange={(d) => setDrawerDate(d)}
           onStep={stepDate}
           onSave={handleSaveNote}

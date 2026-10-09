@@ -14,6 +14,7 @@ interface Props {
   note: Note | null;
   bar: Bar | null;
   prevClose: number | null;
+  offline: boolean;
   onDateChange: (date: string) => void;
   onStep: (delta: number) => void;
   onSave: (input: Omit<NoteInput, "market" | "symbol" | "date">) => void;
@@ -31,6 +32,7 @@ export default function JournalDrawer({
   note,
   bar,
   prevClose,
+  offline,
   onDateChange,
   onStep,
   onSave,
@@ -50,6 +52,7 @@ export default function JournalDrawer({
   }, [note, date]);
 
   function save() {
+    if (offline) return;
     onSave({
       title,
       body,
@@ -166,14 +169,18 @@ export default function JournalDrawer({
       </div>
 
       <div className="drawer-actions">
-        <button onClick={save}>儲存</button>
+        <button onClick={save} disabled={offline}>
+          儲存
+        </button>
         {note && (
-          <button className="ghost danger" onClick={onDelete}>
+          <button className="ghost danger" onClick={onDelete} disabled={offline}>
             刪除
           </button>
         )}
         <span className="grow" />
-        <span className="muted small">⌘/Ctrl+S 儲存　←/→ 換日期</span>
+        <span className="muted small">
+          {offline ? "離線中，無法儲存" : "⌘/Ctrl+S 儲存　←/→ 換日期"}
+        </span>
       </div>
     </aside>
   );

@@ -443,6 +443,15 @@ button.primary {
   white-space: nowrap;
 }
 
+.banner {
+  padding: 8px 16px;
+  background: #3a2f16;
+  color: #f0c674;
+  font-size: 13px;
+  border-bottom: 1px solid #5a4a2a;
+  text-align: center;
+}
+
 /* 日誌抽屜 */
 .drawer {
   width: 320px;
