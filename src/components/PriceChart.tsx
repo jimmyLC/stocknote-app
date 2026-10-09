@@ -175,12 +175,14 @@ export default function PriceChart({
   prefs,
   symbol,
   noteDates,
+  resetKey,
   onPickDate,
 }: {
   bars: Bar[];
   prefs: Prefs;
   symbol: string;
   noteDates: string[];
+  resetKey: number;
   onPickDate: (date: string) => void;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
@@ -306,7 +308,7 @@ export default function PriceChart({
     };
     const id = requestAnimationFrame(apply);
     return () => cancelAnimationFrame(id);
-  }, [prefs.range, series]);
+  }, [prefs.range, series, resetKey]);
 
   return (
     <div ref={elRef} className="chart" tabIndex={0} aria-label="價格圖" />

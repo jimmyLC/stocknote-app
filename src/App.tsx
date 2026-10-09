@@ -145,6 +145,7 @@ function Home({ email }: { email: string }) {
   const [calendarKey, setCalendarKey] = useState(0);
   const [offline, setOffline] = useState(() => !navigator.onLine);
   const [stale, setStale] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
   const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -538,6 +539,13 @@ function Home({ email }: { email: string }) {
                     </button>
                   ))}
                 </div>
+                <button
+                  className="ghost"
+                  title="恢復預設顯示區間（依左邊選的區間）"
+                  onClick={() => setResetKey((k) => k + 1)}
+                >
+                  還原
+                </button>
                 <span className="toolbar-sep" />
                 <span className="toolbar-label">週期</span>
                 <div className="seg">
@@ -567,6 +575,7 @@ function Home({ email }: { email: string }) {
                       prefs={prefs}
                       symbol={`${security.market}:${security.symbol}`}
                       noteDates={noteDates}
+                      resetKey={resetKey}
                       onPickDate={(d) => setDrawerDate(d)}
                     />
                   </Suspense>
