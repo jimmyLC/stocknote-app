@@ -312,11 +312,15 @@ export default function PriceChart({
       const chart = chartRef.current;
       if (!chart) return;
       const rect = el.getBoundingClientRect();
-      const point = chart.convertFromPixel(
+      // 注意：傳入陣列時回傳也是陣列
+      const converted = chart.convertFromPixel(
         [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
         { paneId: "candle_pane" },
-      ) as { timestamp?: number };
-      const bar = nearestBar(seriesRef.current, point.timestamp ?? NaN);
+      );
+      const point = (Array.isArray(converted) ? converted[0] : converted) as {
+        timestamp?: number;
+      };
+      const bar = nearestBar(seriesRef.current, point?.timestamp ?? NaN);
       if (!bar) return;
       const note = bar.dates.find((x) => noteSetRef.current.has(x));
       pickRef.current(note ?? bar.dates[bar.dates.length - 1]);
