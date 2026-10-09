@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: M1–M5 + a polish pass are done — live at https://stock.example.com** (login, any TW security by search, day/week/month chart with toggleable MA/VOL/MACD/KD, favorites, private trading journal with chart dots + calendar + search + JSON/CSV export). See `進度.md`.
+- **Status: M1–M6 done — live at https://stock.example.com** (login, any TW security by search, day/week/month chart with toggleable MA/VOL/MACD/KD, favorites, private trading journal with chart dots + calendar + search + JSON/CSV export, offline chart viewing). See `進度.md`.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
@@ -42,7 +42,7 @@ Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded 
 | API | same Worker, `/api/*` (`run_worker_first: ["/api/*"]`) |
 | DB | Cloudflare **D1** (SQLite) |
 | Auth | **Better Auth** (D1-native, runs on the edge) |
-| Client cache | **Dexie** (IndexedDB) |
+| Client cache | **IndexedDB** (`src/lib/offline.ts`) — last OHLCV per symbol, for offline chart viewing |
 | Server cache | **Cache API** |
 
 ### Data providers
@@ -56,17 +56,16 @@ Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded 
 
 ### Product rules (decided; do not change without asking)
 - Scope v1: **加權指數 `TW:0000` by default, but any TW security can be viewed** (search by code/name), **daily / weekly / monthly** bars (weekly & monthly are aggregated client-side), ~10 years of history. No intraday.
-- Journal: **one note per (user, security, trade_date)**, **private**. Fields: title, body, tags (free text), mood (fixed: 看多 / 看空 / 中性 / 觀望). The day's close and change are auto-filled. Entry: click a candle **or** the 「＋ 寫筆記」 button; the drawer also has a date picker, `⌘/Ctrl+S` save, `←/→` step, `Esc` close, and a delete button. Notes show as a small blue dot under the bar (custom `noteDot` overlay) and in the 日曆 tab (month list + cross-security search + JSON/CSV export).
+- Journal: **one note per (user, security, trade_date)**, **private**. Fields: title, body, tags (free text), mood (fixed: 看多 / 看空 / 中性 / 觀望). The day's close and change are auto-filled. Entry: the 「＋ 寫筆記」 button (chart view) **or** clicking a note in the 日曆 tab; the drawer also has a date picker, `⌘/Ctrl+S` save, `←/→` step, `Esc` close, and a delete button. Notes show as a small blue dot under the bar (custom `noteDot` overlay, itself clickable) and in the 日曆 tab (month list + cross-security search + JSON/CSV export). **Clicking the chart/candles deliberately does NOT open the journal** (it was too easy to trigger by accident).
 - The chart (`src/components/PriceChart.tsx`) is **lazy-loaded** so the login screen does not download klinecharts.
 - Indicators: MA **5/10/20/60/120/240** (each individually toggleable), MACD **12/26/9**, KD **9/3/3**, volume panel (with 5/20 volume MAs). The MACD panel, KD panel and volume panel are each toggleable. Toggles persist per user.
 - Volume metric shown: **成交金額 (NTD)**.
-- Journal: **one note per (user, security, trade_date)**, **private**. Fields: title, body, tags (free text), mood (fixed: 看多 / 看空 / 中性 / 觀望). The day's close and change are auto-filled. Entry: click a daily candle → right drawer. Notes appear as flags on the chart and on a calendar page.
 - Favorites: per user, D1-backed, sidebar list, drag to reorder.
 - Auth: the **whole site** is login-gated; still model rows with `user_id` even though v1 is single-user.
 - Cadence: update **once per trading day after ~17:30** (TW market closes 13:30; data settles later). Never display real-time data.
-- Caching: `/api/ohlcv` cached in the Worker (Cache API) until the next close; client caches in Dexie so the chart works offline. Notes require a connection (read-only offline with a banner); **no offline write queue**.
-- Layout: left sidebar (search + favorites) · main (header + 4-pane chart) · journal right drawer; plus a separate calendar page.
-- Chart window defaults to **1 year**; zoom/pan; quick ranges **3M / 6M / 1Y / 全部**.
+- Caching: `/api/ohlcv` cached in the Worker (Cache API) until the next close; the client stores the last OHLCV per symbol in **IndexedDB** (`src/lib/offline.ts`) so the chart renders offline (cached first, then refreshed). Journal needs a connection (save/delete are disabled offline); **no offline write queue**.
+- Layout: left sidebar (search + favorites) · main (header + 4-pane chart) · journal right drawer; plus a separate calendar page. On screens under 720 px the sidebar and drawer become overlays.
+- Chart window defaults to **1 year**; zoom/pan; quick ranges **3M / 6M / 1Y / 3Y / 全部**.
 - Footer: 「資料僅供參考，非投資建議」 + 「資料來源：FinMind／臺灣證券交易所」.
 
 ## Backend (Cloudflare D1)
