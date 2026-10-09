@@ -152,21 +152,6 @@ function aggregate(bars: Bar[], period: Period): AggBar[] {
   return [...groups.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
 
-/** 找最接近某個時間的 K 棒（二分搜尋）。 */
-function nearestBar(list: AggBar[], t: number): AggBar | null {
-  if (!Number.isFinite(t) || list.length === 0) return null;
-  let lo = 0;
-  let hi = list.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (list[mid].timestamp < t) lo = mid + 1;
-    else hi = mid;
-  }
-  const cand = list[lo];
-  const prev = lo > 0 ? list[lo - 1] : null;
-  return prev && Math.abs(prev.timestamp - t) < Math.abs(cand.timestamp - t) ? prev : cand;
-}
-
 const PANES: Record<"vol" | "macd" | "kdj", { name: string; paneId: string; calcParams: number[]; shortName?: string; height: number; order: number }> = {  vol: { name: "VOL", paneId: "volume_pane", calcParams: [5, 20], shortName: "成交金額", height: 100, order: 10 },
   macd: { name: "MACD", paneId: "macd_pane", calcParams: [12, 26, 9], height: 120, order: 20 },
   kdj: { name: "KDJ", paneId: "kdj_pane", calcParams: [9, 3, 3], height: 120, order: 30 },
@@ -285,50 +270,6 @@ export default function PriceChart({
     if (chartRef.current) applyPane(chartRef.current, prefs.kdj, PANES.kdj);
   }, [prefs.kdj]);
 
-  // 點 K 線 → 回報日期（週／月則回報該期間內第一個有筆記的日子，否則期間最後一天）
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!chart) return;
-    const resolve = (t: number) => {
-      const bar = nearestBar(seriesRef.current, t);
-      if (!bar) return;
-      const note = bar.dates.find((x) => noteSetRef.current.has(x));
-      pickRef.current(note ?? bar.dates[bar.dates.length - 1]);
-    };
-    const handler = (data?: unknown) => {
-      const d = data as { timestamp?: number; kLineData?: { timestamp?: number } } | undefined;
-      const t = d?.timestamp ?? d?.kLineData?.timestamp;
-      if (typeof t === "number") resolve(t);
-    };
-    chart.subscribeAction("onCandleBarClick", handler);
-    return () => chart.unsubscribeAction("onCandleBarClick", handler);
-  }, []);
-
-  // 點圖表任何位置都能開當天的筆記（用座標換算，比只點 K 棒本體可靠）
-  useEffect(() => {
-    const el = elRef.current;
-    if (!el) return;
-    const onClick = (e: MouseEvent) => {
-      const chart = chartRef.current;
-      if (!chart) return;
-      const rect = el.getBoundingClientRect();
-      // 注意：傳入陣列時回傳也是陣列
-      const converted = chart.convertFromPixel(
-        [{ x: e.clientX - rect.left, y: e.clientY - rect.top }],
-        { paneId: "candle_pane" },
-      );
-      const point = (Array.isArray(converted) ? converted[0] : converted) as {
-        timestamp?: number;
-      };
-      const bar = nearestBar(seriesRef.current, point?.timestamp ?? NaN);
-      if (!bar) return;
-      const note = bar.dates.find((x) => noteSetRef.current.has(x));
-      pickRef.current(note ?? bar.dates[bar.dates.length - 1]);
-    };
-    el.addEventListener("click", onClick);
-    return () => el.removeEventListener("click", onClick);
-  }, []);
-
   // 有筆記的日子在圖上做記號（週／月：期間內任一天有筆記就標）
   const noteKey = noteDates.join(",");
   useEffect(() => {
@@ -368,12 +309,6 @@ export default function PriceChart({
   }, [prefs.range, series]);
 
   return (
-    <div
-      ref={elRef}
-      className="chart"
-      tabIndex={0}
-      aria-label="價格圖，點一下可寫當天筆記"
-      title="點一下可寫當天筆記"
-    />
+    <div ref={elRef} className="chart" tabIndex={0} aria-label="價格圖" />
   );
 }

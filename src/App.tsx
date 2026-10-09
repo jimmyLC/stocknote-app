@@ -497,7 +497,9 @@ function Home({ email }: { email: string }) {
                   ))}
                 </div>
                 <span className="grow" />
-                <span className="muted small">點 K 線、或用上方「＋ 寫筆記」來記錄</span>
+                <span className="muted small">
+                  用上方「＋ 寫筆記」記錄；有筆記的日子 K 棒下方有藍點
+                </span>
               </div>
 
               <div className="chart-wrap">
