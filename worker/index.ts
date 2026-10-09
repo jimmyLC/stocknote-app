@@ -285,8 +285,16 @@ app.get("/api/notes/:date", async (c) => {
   });
 });
 
-// 其餘交給靜態資源（SPA 由 not_found_handling: single-page-application 處理）
-app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+// 其餘交給靜態資源（SPA 由 not_found_handling: single-page-application 處理）。
+// HTML 一律 no-cache：避免邊緣／瀏覽器快取到舊的 index.html（會指到舊的 JS，看不到新版）。
+app.all("*", async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.raw);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return res;
+  const headers = new Headers(res.headers);
+  headers.set("Cache-Control", "no-cache, must-revalidate");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+});
 
 function defaultFrom(to: string): string {
   const [y, m, d] = to.split("-").map(Number);
