@@ -1,6 +1,6 @@
 # AGENTS.md — stocknote-app（台股技術分析＋交易日誌）
 
-Guide for AI coding agents (Codex, Claude Code) working in this repository. `進度.md` (Traditional Chinese) is the owner-facing status and backlog; if the docs and the code ever disagree, trust the code and fix the docs.
+Guide for AI coding agents (Codex, Claude Code) working in this repository. `PROJECT_STATUS.md` (Traditional Chinese) is the owner-facing status and backlog; if the docs and the code ever disagree, trust the code and fix the docs.
 
 ## What this is
 **stocknote-app** is a personal Taiwan-stock web app / PWA. It shows the **Taiwan Stock Exchange Weighted Index (加權指數, `TW:0000`)** with a daily technical-analysis chart (candlesticks + moving averages + volume + MACD + KD), keeps a **private trading journal** (one note per security per trading day), and manages a **favorites** list. It is built to grow from the index to individual Taiwan stocks, and later to US stocks (V2/V3).
@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `進
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: M1–M6 done — live at https://stock.example.com** (login, any TW security by search, day/week/month chart with toggleable MA/VOL/MACD/KD, favorites, private trading journal with chart dots + calendar + search + JSON/CSV export, offline chart viewing). See `進度.md`.
+- **Status: M1–M6 done — live at https://stock.example.com** (login, any TW security by search, day/week/month chart with toggleable MA/VOL/MACD/KD, favorites, private trading journal with chart dots + calendar + search + JSON/CSV export, offline chart viewing). See `PROJECT_STATUS.md`.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
