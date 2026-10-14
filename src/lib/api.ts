@@ -189,6 +189,26 @@ export async function searchNotes(q: string): Promise<NoteSearchResult[]> {
   return data?.notes ?? [];
 }
 
+export interface RecentNote extends NoteSearchResult {
+  excerpt: string | null;
+}
+
+export async function fetchRecentNotes(only?: {
+  market: string;
+  symbol: string;
+}): Promise<RecentNote[]> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (only) {
+    params.set("market", only.market);
+    params.set("symbol", only.symbol);
+  }
+  const res = await fetch(`/api/notes/recent?${params.toString()}`, {
+    credentials: "same-origin",
+  });
+  const data = await json<{ notes: RecentNote[] }>(res);
+  return data?.notes ?? [];
+}
+
 export interface ExportedNote {
   date: string;
   market: string;
@@ -206,3 +226,73 @@ export async function exportNotes(): Promise<ExportedNote[]> {
   const data = await json<{ notes: ExportedNote[] }>(res);
   return data?.notes ?? [];
 }
+
+export interface MarketData {
+  from: string;
+  to: string;
+  institutional: Array<{ date: string; foreign: number; trust: number; dealer: number; total: number }>;
+  margin: Array<{ date: string; balance: number; shortBalance: number }>;
+  maintenance: Array<{ date: string; value: number }>;
+  taiex: Array<{ date: string; close: number }>;
+}
+
+export async function fetchMarket(days = 400): Promise<MarketData> {
+  const res = await fetch(`/api/market?days=${days}`, { credentials: "same-origin" });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body) throw new Error(body?.error ?? `讀取市場數據失敗 (${res.status})`);
+  return body as MarketData;
+}
+
+export type TradeSide = "long" | "short";
+export type TradeStatus = "plan" | "open" | "closed" | "cancelled";
+
+export interface Trade {
+  id: string;
+  market: string;
+  symbol: string;
+  name: string;
+  side: TradeSide;
+  status: TradeStatus;
+  strategy: string | null;
+  reason: string | null;
+  plan_date: string;
+  entry_date: string | null;
+  entry_price: number;
+  shares: number;
+  stop_price: number;
+  target_price: number | null;
+  exit_date: string | null;
+  exit_price: number | null;
+  exit_note: string | null;
+  followed_plan: number | null;
+  last: { date: string; close: number } | null;
+  alert: "stop" | "target" | null;
+}
+
+export type TradeInput = Partial<Omit<Trade, "id" | "name" | "last" | "alert" | "followed_plan">> & {
+  followed_plan?: boolean | null;
+};
+
+export async function fetchTrades(): Promise<Trade[]> {
+  const res = await fetch("/api/trades", { credentials: "same-origin" });
+  const data = await json<{ trades: Trade[] }>(res);
+  return data?.trades ?? [];
+}
+
+async function send(method: string, url: string, body?: unknown): Promise<void> {
+  const res = await fetch(url, {
+    method,
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => null);
+    throw new Error(b?.error ?? `儲存失敗 (${res.status})`);
+  }
+}
+
+export const createTrade = (input: TradeInput) => send("POST", "/api/trades", input);
+export const updateTrade = (id: string, input: TradeInput) =>
+  send("PATCH", `/api/trades/${encodeURIComponent(id)}`, input);
+export const deleteTrade = (id: string) => send("DELETE", `/api/trades/${encodeURIComponent(id)}`);

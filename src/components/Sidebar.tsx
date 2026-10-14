@@ -4,6 +4,8 @@ import {
   type Favorite,
   type Security,
 } from "../lib/api";
+import { GLOBAL_INDICES, MARKET_LABEL } from "../lib/markets";
+import Icon from "./Icon";
 
 interface Props {
   current: { market: string; symbol: string };
@@ -58,7 +60,9 @@ export default function Sidebar({ current, favorites, onSelect, onRemove, onReor
       <div className="search-box">
         <input
           value={query}
-          placeholder="搜尋代號或名稱"
+          type="search"
+          aria-label="搜尋股票代號或名稱"
+          placeholder="搜尋代號或名稱，例如 2330、台積電"
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
@@ -73,6 +77,7 @@ export default function Sidebar({ current, favorites, onSelect, onRemove, onReor
                 className="search-item"
                 onClick={() => pick(r)}
               >
+                {r.market !== "TW" && <span className="tag">{MARKET_LABEL[r.market]}</span>}
                 <span className="sym">{r.symbol}</span>
                 <span className="nm">{r.name}</span>
                 {r.kind === "index" && <span className="tag">指數</span>}
@@ -82,11 +87,25 @@ export default function Sidebar({ current, favorites, onSelect, onRemove, onReor
         )}
       </div>
 
+      <div className="sidebar-title">全球大盤</div>
+      <div className="index-list">
+        {GLOBAL_INDICES.map((x) => (
+          <div
+            key={`${x.market}:${x.symbol}`}
+            className={`fav-item${isCurrent(x) ? " active" : ""}`}
+            onClick={() => onSelect(x)}
+          >
+            <span className="mkt">{MARKET_LABEL[x.market]}</span>
+            <span className="nm">{x.name}</span>
+          </div>
+        ))}
+      </div>
+
       <div className="sidebar-title">收藏</div>
       <div className="fav-list">
         {favorites.length === 0 && (
           <div className="muted small" style={{ padding: "6px 8px" }}>
-            還沒有收藏，用上面的搜尋加入。
+            還沒有收藏。搜尋一檔股票，在標題旁按星號加入。
           </div>
         )}
         {favorites.map((f, i) => (
@@ -103,13 +122,14 @@ export default function Sidebar({ current, favorites, onSelect, onRemove, onReor
             <span className="nm">{f.name}</span>
             <button
               className="rm"
+              aria-label={`移除收藏 ${f.name}`}
               title="移除收藏"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemove(f.id);
               }}
             >
-              ✕
+              <Icon name="x" size={14} />
             </button>
           </div>
         ))}

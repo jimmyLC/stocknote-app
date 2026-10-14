@@ -1,13 +1,28 @@
 import { Hono } from "hono";
 import { getAuth } from "./auth";
+import { devSession, devSkipAuth, getDevUser } from "./dev-auth";
 import { cachedJson } from "./cache";
 import { getDailyOHLCV } from "./market";
+import {
+  backfillMaintenance,
+  getInstitutional,
+  getMaintenance,
+  getMargin,
+  taipeiToday,
+} from "./marketData";
 import { ensureSecurities, searchSecurities } from "./securities";
+import { trades } from "./trades";
 import type { Env } from "./types";
 
 type Variables = { userId: string };
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
+
+// 本機開發跳過登入（見 dev-auth.ts；正式環境不會生效）
+app.get("/api/auth/get-session", async (c, next) => {
+  if (!devSkipAuth(c.env)) return next();
+  return c.json(await devSession(c.env));
+});
 
 // Better Auth 掛在 /api/auth/*
 app.on(["GET", "POST"], "/api/auth/*", (c) => getAuth(c.env).handler(c.req.raw));
@@ -16,6 +31,10 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 
 // 其餘 /api/* 一律要登入（整站鎖）。
 app.use("/api/*", async (c, next) => {
+  if (devSkipAuth(c.env)) {
+    c.set("userId", (await getDevUser(c.env)).id);
+    return next();
+  }
   const session = await getAuth(c.env).api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: "unauthorized" }, 401);
   c.set("userId", session.user.id);
@@ -24,6 +43,7 @@ app.use("/api/*", async (c, next) => {
 
 // 目前登入者
 app.get("/api/me", async (c) => {
+  if (devSkipAuth(c.env)) return c.json({ user: await getDevUser(c.env) });
   const session = await getAuth(c.env).api.getSession({ headers: c.req.raw.headers });
   return c.json({ user: session!.user });
 });
@@ -49,6 +69,43 @@ app.get("/api/ohlcv", async (c) => {
     );
   }
 });
+
+// 市場數據：三大法人買賣超、融資餘額、融資維持率（估算）
+app.get("/api/market", async (c) => {
+  const to = taipeiToday();
+  const days = Math.min(1500, Math.max(30, Number(c.req.query("days")) || 400));
+  const from = new Date(Date.parse(`${to}T00:00:00Z`) - days * 864e5).toISOString().slice(0, 10);
+  const key = `https://stocknote.internal/api/market?from=${from}&to=${to}`;
+  try {
+    const { body, cached } = await cachedJson(key, c.executionCtx, async () => {
+      const [institutional, margin, taiex] = await Promise.all([
+        getInstitutional(c.env, from, to),
+        getMargin(c.env, from, to),
+        getDailyOHLCV({ market: "TW", symbol: "0000" }, from, to, { token: c.env.FINMIND_TOKEN }),
+      ]);
+      return {
+        institutional,
+        margin,
+        taiex: taiex.bars.map((b) => ({ date: b.date, close: b.close })),
+      };
+    });
+    // 維持率存在 D1（自己算的），不走快取，排程補到哪就顯示到哪。
+    const maintenance = await getMaintenance(c.env, from, to);
+    return c.json({ from, to, cached, ...body, maintenance });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+});
+
+// 手動補維持率（排程也會跑）；一次最多 20 天。
+app.post("/api/market/backfill", async (c) => {
+  const limit = Math.min(20, Math.max(1, Number(c.req.query("limit")) || 5));
+  const added = await backfillMaintenance(c.env, limit);
+  return c.json({ ok: true, added });
+});
+
+// 交易計畫（停損／停利）
+app.route("/api/trades", trades);
 
 // 使用者偏好（指標開關、預設區間）
 app.get("/api/prefs", async (c) => {
@@ -140,7 +197,27 @@ app.patch("/api/favorites/order", async (c) => {
   return c.json({ ok: true });
 });
 
-// 交易日誌：搜尋 / 匯出（要在 /:date 之前）
+// 交易日誌：最近筆記 / 搜尋 / 匯出（要在 /:date 之前）
+app.get("/api/notes/recent", async (c) => {
+  const limit = Math.min(200, Math.max(1, Number(c.req.query("limit")) || 50));
+  const market = c.req.query("market")?.toUpperCase();
+  const symbol = c.req.query("symbol");
+  const only = market && symbol;
+  const { results } = await c.env.DB.prepare(
+    `select n.trade_date as date, n.market, n.symbol,
+            coalesce(s.name, n.symbol) as name, n.title, n.mood,
+            substr(n.body, 1, 120) as excerpt
+     from journal_notes n
+     left join securities s on s.market = n.market and s.symbol = n.symbol
+     where n.user_id = ? ${only ? "and n.market = ? and n.symbol = ?" : ""}
+     order by n.trade_date desc, n.updated_at desc
+     limit ?`,
+  )
+    .bind(...(only ? [c.get("userId"), market, symbol, limit] : [c.get("userId"), limit]))
+    .all();
+  return c.json({ notes: results });
+});
+
 app.get("/api/notes/search", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   if (!q) return c.json({ notes: [] });
@@ -301,4 +378,10 @@ function defaultFrom(to: string): string {
   return `${y - 10}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // 排程（wrangler.jsonc 的 triggers.crons）：每小時補一些融資維持率的歷史資料。
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(backfillMaintenance(env, 10).then(() => undefined));
+  },
+} satisfies ExportedHandler<Env>;

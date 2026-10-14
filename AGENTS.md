@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `PRO
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
-- **Status: M1–M6 done — live at https://stock.example.com** (login, any TW security by search, day/week/month chart with toggleable MA/VOL/MACD/KD, favorites, private trading journal with chart dots + calendar + search + JSON/CSV export, offline chart viewing). See `PROJECT_STATUS.md`.
+- **Status: M1–M6 live at https://stock.example.com.** Branch `feat/stocknote-notes-panel` (not merged yet, 2026-10-15) adds: rename to **StockNote**, right-side recent-notes panel, global indices (US/JP/KR), 市場數據 page (三大法人, 融資餘額, 融資維持率 estimate), 交易計畫 (stop-loss/take-profit plans with alerts and stats), UI redesign with light/dark toggle, local login bypass. See `PROJECT_STATUS.md`.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.
@@ -28,6 +28,7 @@ npm run deploy     # build + wrangler deploy
 npm run db:local   # wrangler d1 migrations apply stocknote-db --local
 npm run db:remote  # wrangler d1 migrations apply stocknote-db --remote
 ```
+Add `DEV_SKIP_AUTH=1` to skip login locally (`worker/dev-auth.ts`; only takes effect when `BETTER_AUTH_URL` is localhost, so it can never open production). `wrangler dev` needs a `dist/` folder to exist (run `npm run build` once or `mkdir dist`).
 Local secrets live in `.dev.vars` (git-ignored; copy from `.dev.vars.example`): `BETTER_AUTH_SECRET` (`openssl rand -base64 32`) and `BETTER_AUTH_URL=http://localhost:5173`. Add `ALLOW_SIGNUP=1` to temporarily re-open sign-up for local testing (production leaves it unset = closed). Note `wrangler dev` uses the `routes` host `stock.example.com` as the local Host, so `worker/auth.ts` lists the dev origins in `trustedOrigins` as well.
 
 ## Architecture (decided)
@@ -52,6 +53,8 @@ Vite + React 19 + TypeScript PWA (`vite-plugin-pwa`). All UI text is hard-coded 
 - **FinMind is primary** (`TaiwanStockPrice` / `USStockPrice`: free, keyless, CORS `*`, history to 1994/1999). The **TWSE official website** (`www.twse.com.tw`) is the fallback for the Taiwan index/stocks only.
 - Field mapping: FinMind `max`→high, `min`→low; `Trading_Volume` = shares (股), `Trading_money` = NTD (元).
 - Security master list: FinMind `TaiwanStockInfo` (~3,150 codes with name/industry/market), ingested into D1 daily; the index is a synthetic entry (it is not in that list).
+- **Global indices** (`worker/indices.ts`, `worker/providers/global.ts`): US `SPX/IXIC/DJI/SOX` via FinMind `USStockPrice` (→ Yahoo fallback); `KR:KOSPI` via Naver `siseJson` (→ Yahoo); `JP:N225` via Yahoo chart API (→ Nikkei official CSV, last 3 years only). Yahoo/Naver are unofficial endpoints (the same ones FinanceDataReader/yfinance use) — they can break; they were tested from a local machine, **not yet from Cloudflare's egress IPs**.
+- **Market data** (`worker/marketData.ts`, `GET /api/market`): 三大法人 = FinMind `TaiwanStockTotalInstitutionalInvestors` (matches TWSE BFI82U to the dollar); 融資餘額 = FinMind `TaiwanStockTotalMarginPurchaseShortSale`; **融資維持率 is our own estimate** = Σ(per-stock margin lots × 1000 × close) ÷ 融資金額, from TWSE `MI_MARGN` + `MI_INDEX` (2 requests/day; matched Blave's 191.62% on 2026-10-14). FinMind's own maintenance dataset is paid (Backer) — Jimmy chose not to pay. TWSE stopped publishing the official ratio on 2026-07-29. Results are stored in D1 `market_series`; an hourly Cron Trigger (`17 * * * *`) back-fills 10 days per run.
 - **Prices are unadjusted** in v1 (FinMind's adjusted dataset is paid). The UI labels this 「未還原」. The price index itself is unaffected (no dividend adjustment for the index).
 
 ### Product rules (decided; do not change without asking)
@@ -75,7 +78,11 @@ securities    (market, symbol, name, industry, kind, updated_at)
 favorites     (id, user_id, market, symbol, sort_order, created_at)
 journal_notes (id, user_id, market, symbol, trade_date, title, body, tags, mood, created_at, updated_at)
               UNIQUE (user_id, market, symbol, trade_date)
-user_prefs    (user_id, prefs_json)
+user_prefs    (user_id, prefs_json)          prefs also hold capital, riskPct, theme
+market_series (series, date, value)           self-computed series (融資維持率)
+trades        (id, user_id, market, symbol, side, status plan|open|closed|cancelled,
+               strategy, reason, plan/entry/exit dates, entry/stop/target/exit prices,
+               shares, exit_note, followed_plan)
 ```
 API:
 ```
@@ -89,7 +96,12 @@ GET  /api/notes/:date   PUT /api/notes/:date        (upsert; one per day)
 GET  /api/notes/calendar?month=
 GET  /api/notes/search?q=                       跨證券搜尋筆記（標題/內容/標籤）
 GET  /api/notes/export                          匯出全部筆記（JSON）
-GET  /api/prefs    PUT /api/prefs                per-user prefs (indicator toggles, range, period)
+GET  /api/prefs    PUT /api/prefs                per-user prefs (indicator toggles, range, period, capital, riskPct, theme)
+GET  /api/notes/recent?limit=&market=&symbol=   newest notes (right-side panel)
+GET  /api/market?days=                          三大法人 / 融資餘額 / 維持率 / 加權收盤
+POST /api/market/backfill?limit=                compute missing 維持率 days now (cron does this hourly)
+GET  /api/trades   POST /api/trades   PATCH /api/trades/:id   DELETE /api/trades/:id
+                                                list includes last close + alert ('stop' | 'target')
 ```
 Every `/api/*` route except `/api/auth/*` and `/api/health` requires a session (checked in `worker/index.ts`). `GET /api/ohlcv?market=&symbol=&from=&to=` is cached via the Cache API (24 h) and falls back FinMind → TWSE.
 
@@ -104,6 +116,9 @@ Secrets / vars: `BETTER_AUTH_SECRET` (Worker secret), `BETTER_AUTH_URL` (plain `
   3. `npx wrangler deploy` — creates the Worker and, via `routes: [{ pattern: "stock.example.com", custom_domain: true }]`, the DNS record + certificate automatically.
   4. Add the repo secret `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit + Workers Routes:Edit + D1:Edit + Zone:Read) so CI can deploy.
 - `BETTER_AUTH_URL` is a plain `var` in `wrangler.jsonc` (`https://stock.example.com`); `.dev.vars` overrides it locally.
+
+## Design system
+`src/style.css` holds all tokens on `:root[data-theme=dark|light]`; dark is default, toggled in the footer and stored in prefs (index.html applies it before paint). One accent only (brass `--accent`); red-up/green-down is the TW convention, so the accent is never red/green. Icons are inline SVG in `src/components/Icon.tsx` (no emoji). `PriceChart` takes a `theme` prop and re-styles klinecharts; the chart locale is a registered `zh-TW`. Under 720 px the page scrolls and the chart keeps ≥ 420 px height; indicator toggles collapse behind 「指標」.
 
 ## Conventions
 - Match the surrounding code: small modules, comments only where the "why" is not obvious, no new dependency without a reason.

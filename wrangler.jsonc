@@ -25,6 +25,8 @@
     "BETTER_AUTH_URL": "https://stock.example.com"
   },
   "observability": { "enabled": true },
+  // 每小時補一批融資維持率（證交所資料，一次 10 天，慢慢補齊一年）
+  "triggers": { "crons": ["17 * * * *"] },
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "stock.example.com", "custom_domain": true }]

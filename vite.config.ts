@@ -9,13 +9,13 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg"],
       manifest: {
-        name: "stocknote-app",
-        short_name: "台股筆記",
+        name: "StockNote",
+        short_name: "StockNote",
         description: "台股加權指數技術分析 ＋ 交易日誌",
         lang: "zh-Hant",
         display: "standalone",
-        background_color: "#0e0e10",
-        theme_color: "#0e0e10",
+        background_color: "#0f131b",
+        theme_color: "#0f131b",
         start_url: "/",
         icons: [
           { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },

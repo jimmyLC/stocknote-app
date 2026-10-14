@@ -7,4 +7,6 @@ export interface Env {
   FINMIND_TOKEN?: string;
   /** 僅本機開發用：設為 "1" 可暫時開放註冊。正式環境不設 = 關閉註冊。 */
   ALLOW_SIGNUP?: string;
+  /** 僅本機開發用：設為 "1" 跳過登入（只在 BETTER_AUTH_URL 是 localhost 時生效）。 */
+  DEV_SKIP_AUTH?: string;
 }

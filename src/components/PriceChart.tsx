@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   init,
   dispose,
+  registerLocale,
   registerOverlay,
   type Chart,
   type DeepPartial,
@@ -11,70 +12,92 @@ import {
 import type { Bar } from "../lib/api";
 import { MA_PERIODS, MA_COLORS, type Period, type Prefs } from "../lib/prefs";
 
-// 台股慣例：紅漲綠跌（與標題列一致）。
-const UP = "#ef5350";
-const DOWN = "#26c281";
-const UP_SOFT = "rgba(239, 83, 80, 0.7)";
-const DOWN_SOFT = "rgba(38, 194, 129, 0.7)";
-// 格線調淡（klinecharts 預設是 #EDEDED，在深色底上太亮）。
-const GRID = "rgba(255, 255, 255, 0.05)";
-const AXIS = "#26262c";
-
-// 深色主題，接近 klinecharts 官網 demo 的質感。
-const CHART_STYLES: DeepPartial<Styles> = {
-  grid: {
-    show: true,
-    horizontal: { show: true, size: 1, color: GRID, style: "dashed", dashedValue: [2, 2] },
-    vertical: { show: true, size: 1, color: GRID, style: "dashed", dashedValue: [2, 2] },
+// 台股慣例：紅漲綠跌（與標題列一致）。淺色／深色各一組，跟 style.css 的色票對齊。
+const PALETTE = {
+  dark: {
+    up: "#f0534f",
+    down: "#2bbf86",
+    upSoft: "rgba(240, 83, 79, 0.7)",
+    downSoft: "rgba(43, 191, 134, 0.7)",
+    grid: "rgba(255, 255, 255, 0.05)",
+    axis: "#262c3a",
+    text: "#8c95a6",
+    legend: "#c9cfdb",
+    crosshair: "#5d6678",
+    crossBg: "#2a3142",
   },
-  candle: {
-    bar: {
-      upColor: UP,
-      downColor: DOWN,
-      upBorderColor: UP,
-      downBorderColor: DOWN,
-      upWickColor: UP,
-      downWickColor: DOWN,
-    },
-    priceMark: {
-      high: { color: "#8b8f96" },
-      low: { color: "#8b8f96" },
-      last: { upColor: UP, downColor: DOWN },
-    },
-    tooltip: {
-      title: { color: "#9aa0a6" },
-      legend: { color: "#c9ccd1" },
-    },
-  },
-  indicator: {
-    bars: [{ upColor: UP_SOFT, downColor: DOWN_SOFT }],
-    tooltip: {
-      title: { color: "#9aa0a6" },
-      legend: { color: "#c9ccd1" },
-    },
-  },
-  xAxis: {
-    axisLine: { color: AXIS },
-    tickLine: { color: AXIS },
-    tickText: { color: "#9aa0a6" },
-  },
-  yAxis: {
-    axisLine: { color: AXIS },
-    tickLine: { color: AXIS },
-    tickText: { color: "#9aa0a6" },
-  },
-  separator: { color: AXIS },
-  crosshair: {
-    horizontal: {
-      line: { color: "#6b7280" },
-      text: { backgroundColor: "#3a3a42", borderColor: "#3a3a42" },
-    },
-    vertical: {
-      line: { color: "#6b7280" },
-      text: { backgroundColor: "#3a3a42", borderColor: "#3a3a42" },
-    },
+  light: {
+    up: "#d93025",
+    down: "#0e8a5f",
+    upSoft: "rgba(217, 48, 37, 0.6)",
+    downSoft: "rgba(14, 138, 95, 0.6)",
+    grid: "rgba(16, 24, 40, 0.06)",
+    axis: "#dde1e8",
+    text: "#5d6573",
+    legend: "#2b313c",
+    crosshair: "#8a93a3",
+    crossBg: "#3a4150",
   },
 };
+
+export type Theme = keyof typeof PALETTE;
+
+function chartStyles(theme: Theme): DeepPartial<Styles> {
+  const c = PALETTE[theme];
+  return {
+    grid: {
+      show: true,
+      horizontal: { show: true, size: 1, color: c.grid, style: "dashed", dashedValue: [2, 2] },
+      vertical: { show: true, size: 1, color: c.grid, style: "dashed", dashedValue: [2, 2] },
+    },
+    candle: {
+      bar: {
+        upColor: c.up,
+        downColor: c.down,
+        upBorderColor: c.up,
+        downBorderColor: c.down,
+        upWickColor: c.up,
+        downWickColor: c.down,
+      },
+      priceMark: {
+        high: { color: c.text },
+        low: { color: c.text },
+        last: { upColor: c.up, downColor: c.down },
+      },
+      tooltip: { title: { color: c.text }, legend: { color: c.legend } },
+    },
+    indicator: {
+      bars: [{ upColor: c.upSoft, downColor: c.downSoft }],
+      tooltip: { title: { color: c.text }, legend: { color: c.legend } },
+    },
+    xAxis: { axisLine: { color: c.axis }, tickLine: { color: c.axis }, tickText: { color: c.text } },
+    yAxis: { axisLine: { color: c.axis }, tickLine: { color: c.axis }, tickText: { color: c.text } },
+    separator: { color: c.axis },
+    crosshair: {
+      horizontal: { line: { color: c.crosshair }, text: { backgroundColor: c.crossBg, borderColor: c.crossBg } },
+      vertical: { line: { color: c.crosshair }, text: { backgroundColor: c.crossBg, borderColor: c.crossBg } },
+    },
+  };
+}
+
+// 圖上資訊列用繁體中文（klinecharts 內建只有簡體）
+registerLocale("zh-TW", {
+  time: "時間：",
+  open: "開：",
+  high: "高：",
+  low: "低：",
+  close: "收：",
+  volume: "成交量：",
+  change: "漲幅：",
+  turnover: "成交額：",
+  second: "秒",
+  minute: "分",
+  hour: "時",
+  day: "天",
+  week: "週",
+  month: "月",
+  year: "年",
+});
 
 // 有筆記的日子：K 棒下方的小藍點
 registerOverlay({
@@ -89,6 +112,47 @@ registerOverlay({
       styles: { style: "fill", color: "#4f8cff" },
     },
   ],
+});
+
+// 交易計畫的進場／停損／停利水平線（整條橫跨，左側標文字）
+export interface PriceLine {
+  value: number;
+  label: string;
+  color: string;
+}
+
+registerOverlay<PriceLine>({
+  name: "tradeLine",
+  totalStep: 2,
+  lock: true,
+  needDefaultPointFigure: false,
+  performEventPressedMove: () => {},
+  createPointFigures: ({ coordinates, bounding, overlay }) => {
+    const y = coordinates[0]?.y;
+    const d = overlay.extendData;
+    if (y == null || !d) return [];
+    return [
+      {
+        type: "line",
+        attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+        styles: { style: "dashed", dashedValue: [6, 4], color: d.color, size: 1 },
+        ignoreEvent: true,
+      },
+      {
+        type: "text",
+        // 標在右側（左上角是 K 線的資訊列，會重疊）
+        attrs: {
+          x: bounding.width - 8,
+          y: y - 3,
+          text: `${d.label} ${d.value.toLocaleString()}`,
+          align: "right",
+          baseline: "bottom",
+        },
+        styles: { color: d.color, size: 11, backgroundColor: "transparent", paddingLeft: 0, paddingRight: 0 },
+        ignoreEvent: true,
+      },
+    ];
+  },
 });
 
 interface AggBar extends KLineData {
@@ -176,6 +240,9 @@ export default function PriceChart({
   symbol,
   noteDates,
   resetKey,
+  volumeLabel,
+  priceLines = [],
+  theme = "dark",
   onPickDate,
 }: {
   bars: Bar[];
@@ -183,6 +250,10 @@ export default function PriceChart({
   symbol: string;
   noteDates: string[];
   resetKey: number;
+  /** 台股＝成交金額；國外指數只有成交量 */
+  volumeLabel: string;
+  priceLines?: PriceLine[];
+  theme?: Theme;
   onPickDate: (date: string) => void;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
@@ -196,6 +267,12 @@ export default function PriceChart({
   const pickRef = useRef(onPickDate);
   pickRef.current = onPickDate;
 
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
+  useEffect(() => {
+    chartRef.current?.setStyles(chartStyles(theme));
+  }, [theme]);
+
   const maPeriods = MA_PERIODS.filter((p) => prefs.ma[String(p)]);
   const maKey = maPeriods.join(",");
 
@@ -205,9 +282,9 @@ export default function PriceChart({
     if (!el) return;
 
     const chart: Chart | null = init(el, {
-      locale: "zh-CN",
+      locale: "zh-TW",
       timezone: "Asia/Taipei",
-      styles: CHART_STYLES,
+      styles: chartStyles(themeRef.current),
       layout: {
         barSpaceLimit: { min: 0.1, max: 150 },
         pane: { height: 100, minHeight: 40, dragEnabled: true },
@@ -263,8 +340,9 @@ export default function PriceChart({
 
   // 三個子面板開關
   useEffect(() => {
-    if (chartRef.current) applyPane(chartRef.current, prefs.vol, PANES.vol);
-  }, [prefs.vol]);
+    if (chartRef.current)
+      applyPane(chartRef.current, prefs.vol, { ...PANES.vol, shortName: volumeLabel });
+  }, [prefs.vol, volumeLabel]);
   useEffect(() => {
     if (chartRef.current) applyPane(chartRef.current, prefs.macd, PANES.macd);
   }, [prefs.macd]);
@@ -293,6 +371,24 @@ export default function PriceChart({
       });
     }
   }, [noteKey, series]);
+
+  // 交易計畫的價位線
+  const lineKey = JSON.stringify(priceLines);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.removeOverlay({ name: "tradeLine" });
+    const last = series.at(-1);
+    if (!last) return;
+    for (const line of JSON.parse(lineKey) as PriceLine[]) {
+      chart.createOverlay({
+        name: "tradeLine",
+        paneId: "candle_pane",
+        points: [{ timestamp: last.timestamp, value: line.value }],
+        extendData: line,
+      });
+    }
+  }, [lineKey, series]);
 
   // 顯示區間
   useEffect(() => {

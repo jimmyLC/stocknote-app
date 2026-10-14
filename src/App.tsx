@@ -13,6 +13,7 @@ import {
   addFavorite,
   fetchNotes,
   fetchOhlcv,
+  fetchTrades,
   getFavorites,
   getNote,
   orderFavorites,
@@ -23,10 +24,16 @@ import {
   type Note,
   type NoteInput,
   type OhlcvResponse,
+  type Trade,
 } from "./lib/api";
 import Sidebar from "./components/Sidebar";
 import JournalDrawer from "./components/JournalDrawer";
 import CalendarView from "./components/CalendarView";
+import NotesPanel from "./components/NotesPanel";
+import MarketView from "./components/MarketView";
+import TradesView from "./components/TradesView";
+import Icon from "./components/Icon";
+import { MARKET_LABEL, isTwStock } from "./lib/markets";
 import { getOhlcv, putOhlcv } from "./lib/offline";
 import {
   DEFAULT_PREFS,
@@ -51,6 +58,20 @@ interface Current {
 const PriceChart = lazy(() => import("./components/PriceChart"));
 
 const DEFAULT_SECURITY: Current = { market: "TW", symbol: "0000", name: "加權指數" };
+
+const NOTES_COLLAPSED_KEY = "stocknote:notesCollapsed";
+
+// 窄螢幕一律先收合（展開是覆蓋式，會蓋住圖表）；寬螢幕記住上次狀態。
+function loadNotesCollapsed(): boolean {
+  if (window.innerWidth < 720) return true;
+  try {
+    const v = localStorage.getItem(NOTES_COLLAPSED_KEY);
+    if (v !== null) return v === "1";
+  } catch {
+    // 無痕模式等情況讀不到，用預設值
+  }
+  return false;
+}
 
 function readFromUrl(): Current {
   const s = new URLSearchParams(location.search).get("s");
@@ -96,8 +117,10 @@ function Login() {
   return (
     <div className="center">
       <form className="card" onSubmit={submit}>
-        <h1 className="brand">台股筆記</h1>
-        <p className="muted small">登入以繼續</p>
+        <h1 className="brand brand-lg">
+          Stock<span className="brand-mark">Note</span>
+        </h1>
+        <p className="muted small">寫計畫、守停損、記下每一筆。</p>
 
         <label>
           Email
@@ -141,11 +164,18 @@ function Home({ email }: { email: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [drawerDate, setDrawerDate] = useState<string | null>(null);
   const [drawerNote, setDrawerNote] = useState<Note | null>(null);
-  const [view, setView] = useState<"chart" | "calendar">("chart");
+  const [view, setView] = useState<"chart" | "trades" | "market" | "calendar">("chart");
   const [calendarKey, setCalendarKey] = useState(0);
   const [offline, setOffline] = useState(() => !navigator.onLine);
   const [stale, setStale] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [notesCollapsed, setNotesCollapsed] = useState(loadNotesCollapsed);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const reloadTrades = useCallback(() => {
+    fetchTrades().then(setTrades);
+  }, []);
+  useEffect(reloadTrades, [reloadTrades]);
   const prefsRef = useRef(prefs);
   const saveTimer = useRef<number | undefined>(undefined);
 
@@ -272,6 +302,14 @@ function Home({ email }: { email: string }) {
     apply(patch(prefsRef.current));
   }
 
+  // 外觀：<html data-theme>，index.html 開頁前也會先套一次避免閃爍
+  useEffect(() => {
+    document.documentElement.dataset.theme = prefs.theme;
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", prefs.theme === "light" ? "#f5f6f8" : "#0f131b");
+  }, [prefs.theme]);
+
   function select(s: { market: string; symbol: string; name?: string }) {
     const next: Current = { market: s.market, symbol: s.symbol, name: s.name ?? s.symbol };
     setSecurity(next);
@@ -298,6 +336,23 @@ function Home({ email }: { email: string }) {
   const n = (v: number, digits = 2) =>
     v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
+  const alertCount = trades.filter((t) => t.alert).length;
+  const priceLines = useMemo(
+    () =>
+      trades
+        .filter(
+          (t) =>
+            (t.status === "open" || t.status === "plan") &&
+            t.market === security.market &&
+            t.symbol === security.symbol,
+        )
+        .flatMap((t) => [
+          { value: t.entry_price, label: t.status === "plan" ? "計畫進場" : "進場", color: "#9aa0a6" },
+          { value: t.stop_price, label: "停損", color: "#f0a020" },
+          ...(t.target_price ? [{ value: t.target_price, label: "停利", color: "#4f8cff" }] : []),
+        ]),
+    [trades, security.market, security.symbol],
+  );
   const noteByDate = useMemo(() => new Map(notes.map((x) => [x.date, x])), [notes]);
   const noteDates = useMemo(() => notes.map((x) => x.date), [notes]);
 
@@ -367,10 +422,21 @@ function Home({ email }: { email: string }) {
     setDrawerDate(bars[j].date);
   }
 
-  // 從日曆點一則筆記：切到該證券並直接開抽屜（不換回 K 線檢視）
-  function openNote(market: string, symbol: string, date: string) {
+  function toggleNotes() {
+    setNotesCollapsed((c) => {
+      try {
+        if (window.innerWidth >= 720) localStorage.setItem(NOTES_COLLAPSED_KEY, c ? "0" : "1");
+      } catch {
+        // 存不了就只在這次有效
+      }
+      return !c;
+    });
+  }
+
+  // 從日曆／最近筆記點一則：切到該證券並直接開抽屜（不換回 K 線檢視）
+  function openNote(market: string, symbol: string, date: string, name?: string) {
     const favorite = favorites.find((f) => f.market === market && f.symbol === symbol);
-    setSecurity({ market, symbol, name: favorite?.name ?? symbol });
+    setSecurity({ market, symbol, name: name ?? favorite?.name ?? symbol });
     history.replaceState(null, "", `${location.pathname}?s=${market}:${symbol}`);
     setDrawerDate(date);
   }
@@ -379,28 +445,44 @@ function Home({ email }: { email: string }) {
     <div className="app">
       <header className="topbar">
         <button
-          className="ghost icon"
-          title="顯示/隱藏收藏"
+          className="icon-btn"
+          aria-label="顯示或隱藏側邊欄"
+          aria-pressed={sidebarOpen}
           onClick={() => setSidebarOpen((o) => !o)}
         >
-          ☰
+          <Icon name="menu" />
         </button>
-        <span className="brand small">台股筆記</span>
-        <div className="seg" style={{ marginLeft: 12 }}>
-          <button className={view === "chart" ? "active" : ""} onClick={() => setView("chart")}>
-            圖表
-          </button>
-          <button
-            className={view === "calendar" ? "active" : ""}
-            onClick={() => setView("calendar")}
-          >
-            日曆
-          </button>
-        </div>
+        <span className="brand">
+          Stock<span className="brand-mark">Note</span>
+        </span>
+        <nav className="tabs" aria-label="主要頁面">
+          {(
+            [
+              ["chart", "看盤"],
+              ["trades", "交易計畫"],
+              ["market", "市場數據"],
+              ["calendar", "筆記日曆"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              className={`tab${view === key ? " active" : ""}`}
+              aria-current={view === key ? "page" : undefined}
+              onClick={() => setView(key)}
+            >
+              {label}
+              {key === "trades" && alertCount > 0 && (
+                <span className="badge" aria-label={`${alertCount} 筆需要處理`}>
+                  {alertCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
         <span className="grow" />
-        <span className="muted small">{email}</span>
-        <button className="ghost" onClick={() => signOut()}>
-          登出
+        <span className="user-email">{email}</span>
+        <button className="icon-btn" aria-label="登出" title="登出" onClick={() => signOut()}>
+          <Icon name="logout" />
         </button>
       </header>
 
@@ -434,37 +516,51 @@ function Home({ email }: { email: string }) {
         <div className="main">
           {view === "chart" ? (
             <>
-              <section className="symbol-bar">
-                <span className="symbol-name">{security.name}</span>
-                <span className="symbol-code">({security.symbol})</span>
-                <button
-                  className={`star${fav ? " on" : ""}`}
-                  title={fav ? "移除收藏" : "加入收藏"}
-                  onClick={toggleFavorite}
-                >
-                  {fav ? "★" : "☆"}
-                </button>
-                {security.symbol !== "0000" && <span className="tag warn">未還原</span>}
+              <section className="quote">
+                <div className="quote-id">
+                  <h1 className="quote-name">{security.name}</h1>
+                  <span className="quote-code">
+                    {security.market !== "TW" && (
+                      <span className="mkt">{MARKET_LABEL[security.market] ?? security.market}</span>
+                    )}
+                    {security.symbol}
+                  </span>
+                  <button
+                    className={`icon-btn star${fav ? " on" : ""}`}
+                    aria-label={fav ? "移除收藏" : "加入收藏"}
+                    aria-pressed={!!fav}
+                    title={fav ? "移除收藏" : "加入收藏"}
+                    onClick={toggleFavorite}
+                  >
+                    <Icon name="star" filled={!!fav} />
+                  </button>
+                  {isTwStock(security.market, security.symbol) && (
+                    <span className="tag warn" title="個股價格未做除權息還原，長均線可能受除息缺口影響">
+                      未還原
+                    </span>
+                  )}
+                </div>
                 {last && (
-                  <>
+                  <div className="quote-price">
                     <span className={`price ${dir}`}>{n(last.close)}</span>
                     <span className={`change ${dir}`}>
-                      {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))} ({pct.toFixed(2)}%)
+                      {change >= 0 ? "▲" : "▼"} {n(Math.abs(change))}　{pct >= 0 ? "+" : ""}
+                      {pct.toFixed(2)}%
                     </span>
-                    <span className="muted small">
-                      開 {n(last.open)}　高 {n(last.high)}　低 {n(last.low)}　成交金額{" "}
-                      {Math.round(last.turnover / 1e8).toLocaleString()} 億
-                    </span>
-                  </>
+                  </div>
+                )}
+                {last && (
+                  <dl className="quote-ohlc">
+                    <div><dt>開</dt><dd>{n(last.open)}</dd></div>
+                    <div><dt>高</dt><dd>{n(last.high)}</dd></div>
+                    <div><dt>低</dt><dd>{n(last.low)}</dd></div>
+                    {security.market === "TW" && (
+                      <div><dt>成交金額</dt><dd>{Math.round(last.turnover / 1e8).toLocaleString()} 億</dd></div>
+                    )}
+                    <div><dt>日期</dt><dd>{last.date}</dd></div>
+                  </dl>
                 )}
                 <span className="grow" />
-                {data && (
-                  <span className="muted small">
-                    {data.provider}｜{data.from} ~ {data.to}
-                    {data.cached ? "｜快取" : ""}
-                    {stale ? "｜離線快取" : ""}
-                  </span>
-                )}
                 <button
                   className="primary"
                   disabled={!last}
@@ -472,11 +568,48 @@ function Home({ email }: { email: string }) {
                     setDrawerDate(last ? last.date : new Date().toISOString().slice(0, 10))
                   }
                 >
-                  ＋ 寫筆記
+                  <Icon name="plus" size={16} />
+                  寫筆記
                 </button>
               </section>
 
               <div className="toolbar">
+                <div className="toolbar-view">
+                  <div className="seg" role="group" aria-label="顯示區間">
+                    {RANGES.map(([label, value]) => (
+                      <button
+                        key={label}
+                        className={prefs.range === value ? "active" : ""}
+                        onClick={() => {
+                          update((p) => ({ ...p, range: value }));
+                          setResetKey((k) => k + 1);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="seg" role="group" aria-label="K 棒週期">
+                    {PERIODS.map(([label, value]) => (
+                      <button
+                        key={value}
+                        className={prefs.period === value ? "active" : ""}
+                        onClick={() => update((p) => ({ ...p, period: value }))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    className="ghost tools-toggle"
+                    aria-expanded={toolsOpen}
+                    onClick={() => setToolsOpen((o) => !o)}
+                  >
+                    <Icon name="sliders" size={16} />
+                    指標
+                  </button>
+                </div>
+                <div className={`toolbar-indicators${toolsOpen ? " open" : ""}`}>
                 <span className="toolbar-label">均線</span>
                 {MA_PERIODS.map((period) => {
                   const key = String(period);
@@ -507,7 +640,7 @@ function Home({ email }: { email: string }) {
                     checked={prefs.vol}
                     onChange={() => update((p) => ({ ...p, vol: !p.vol }))}
                   />
-                  成交量
+                  {security.market === "TW" ? "成交金額" : "成交量"}
                 </label>
                 <label className="chk">
                   <input
@@ -526,43 +659,7 @@ function Home({ email }: { email: string }) {
                   KD
                 </label>
 
-                <span className="toolbar-sep" />
-                <span className="toolbar-label">區間</span>
-                <div className="seg">
-                  {RANGES.map(([label, value]) => (
-                    <button
-                      key={label}
-                      className={prefs.range === value ? "active" : ""}
-                      onClick={() => update((p) => ({ ...p, range: value }))}
-                    >
-                      {label}
-                    </button>
-                  ))}
                 </div>
-                <button
-                  className="ghost"
-                  title="恢復預設顯示區間（依左邊選的區間）"
-                  onClick={() => setResetKey((k) => k + 1)}
-                >
-                  還原
-                </button>
-                <span className="toolbar-sep" />
-                <span className="toolbar-label">週期</span>
-                <div className="seg">
-                  {PERIODS.map(([label, value]) => (
-                    <button
-                      key={value}
-                      className={prefs.period === value ? "active" : ""}
-                      onClick={() => update((p) => ({ ...p, period: value }))}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <span className="grow" />
-                <span className="muted small">
-                  用上方「＋ 寫筆記」記錄；有筆記的日子 K 棒下方有藍點
-                </span>
               </div>
 
               <div className="chart-wrap">
@@ -574,7 +671,10 @@ function Home({ email }: { email: string }) {
                       bars={bars}
                       prefs={prefs}
                       symbol={`${security.market}:${security.symbol}`}
+                      volumeLabel={security.market === "TW" ? "成交金額" : "成交量"}
+                      priceLines={priceLines}
                       noteDates={noteDates}
+                      theme={prefs.theme}
                       resetKey={resetKey}
                       onPickDate={(d) => setDrawerDate(d)}
                     />
@@ -582,6 +682,21 @@ function Home({ email }: { email: string }) {
                 )}
               </div>
             </>
+          ) : view === "trades" ? (
+            <TradesView
+              security={security}
+              lastClose={last?.close ?? null}
+              capital={prefs.capital}
+              riskPct={prefs.riskPct}
+              onSettings={(patch) => update((p) => ({ ...p, ...patch }))}
+              onOpenChart={(t) => {
+                select(t);
+                setView("chart");
+              }}
+              onChanged={reloadTrades}
+            />
+          ) : view === "market" ? (
+            <MarketView />
           ) : (
             <CalendarView
               onOpen={(n) => openNote(n.market, n.symbol, n.date)}
@@ -589,10 +704,41 @@ function Home({ email }: { email: string }) {
             />
           )}
 
-          <footer className="footer muted small">
-            資料僅供參考，非投資建議。資料來源：FinMind／臺灣證券交易所。
+          <footer className="footer">
+            <span>
+              資料僅供參考，非投資建議。來源：FinMind、臺灣證券交易所、Naver、Yahoo Finance
+              {data && view === "chart" && `（本圖：${data.provider}${stale ? "，離線快取" : ""}）`}
+            </span>
+            <div className="seg theme-toggle" role="group" aria-label="外觀">
+              <button
+                className={prefs.theme === "light" ? "active" : ""}
+                aria-pressed={prefs.theme === "light"}
+                onClick={() => update((p) => ({ ...p, theme: "light" }))}
+              >
+                <Icon name="sun" size={14} />
+                淺色
+              </button>
+              <button
+                className={prefs.theme === "dark" ? "active" : ""}
+                aria-pressed={prefs.theme === "dark"}
+                onClick={() => update((p) => ({ ...p, theme: "dark" }))}
+              >
+                <Icon name="moon" size={14} />
+                深色
+              </button>
+            </div>
           </footer>
         </div>
+
+        {drawerDate === null && (
+          <NotesPanel
+            current={security}
+            refreshKey={calendarKey}
+            collapsed={notesCollapsed}
+            onToggle={toggleNotes}
+            onOpen={(n) => openNote(n.market, n.symbol, n.date, n.name)}
+          />
+        )}
 
         <JournalDrawer
           open={drawerDate !== null}

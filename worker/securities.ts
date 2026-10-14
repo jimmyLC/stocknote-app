@@ -1,3 +1,4 @@
+import { GLOBAL_INDICES } from "./indices";
 import type { Env } from "./types";
 
 const FINMIND_INFO = "https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo";
@@ -21,6 +22,7 @@ export interface Security {
  * 資料來源：FinMind TaiwanStockInfo；一天只更新一次。
  */
 export async function ensureSecurities(env: Env): Promise<void> {
+  await ensureGlobalIndices(env);
   const row = await env.DB.prepare("select max(updated_at) as m from securities").first<{
     m: number | null;
   }>();
@@ -57,6 +59,20 @@ export async function ensureSecurities(env: Env): Promise<void> {
   for (let i = 0; i < stmts.length; i += 200) {
     await env.DB.batch(stmts.slice(i, i + 200));
   }
+}
+
+// 國際大盤是寫死的清單，數量變了（例如新增指數）才重寫。
+async function ensureGlobalIndices(env: Env): Promise<void> {
+  const row = await env.DB.prepare(
+    "select count(*) as n from securities where market != 'TW'",
+  ).first<{ n: number }>();
+  if ((row?.n ?? 0) >= GLOBAL_INDICES.length) return;
+  const insert = env.DB.prepare(
+    `insert into securities (market, symbol, name, industry, kind, updated_at)
+     values (?, ?, ?, '指數', 'index', ?)
+     on conflict(market, symbol) do update set name = excluded.name, updated_at = excluded.updated_at`,
+  );
+  await env.DB.batch(GLOBAL_INDICES.map((x) => insert.bind(x.market, x.symbol, x.name, Date.now())));
 }
 
 export async function searchSecurities(env: Env, q: string, limit = 20): Promise<Security[]> {

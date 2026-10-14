@@ -2,3 +2,5 @@
 # 複製成 .dev.vars 後填入：
 BETTER_AUTH_SECRET="用 openssl rand -base64 32 產生"
 BETTER_AUTH_URL="http://localhost:5173"
+# 選用：本機跳過登入（只在 BETTER_AUTH_URL 是 localhost 時生效）
+DEV_SKIP_AUTH=1

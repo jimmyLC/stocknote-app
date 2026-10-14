@@ -30,6 +30,11 @@ export interface Prefs {
   range: number | null;
   /** 週期：日 / 週 / 月 */
   period: Period;
+  /** 風控：總資金（元）與每筆最多願意賠的比例（%） */
+  capital: number;
+  riskPct: number;
+  /** 外觀 */
+  theme: "dark" | "light";
 }
 
 export const PERIODS: Array<[string, Period]> = [
@@ -45,6 +50,9 @@ export const DEFAULT_PREFS: Prefs = {
   kdj: true,
   range: 250,
   period: "day",
+  capital: 1_000_000,
+  riskPct: 1,
+  theme: "dark",
 };
 
 const LS_KEY = "stocknote.prefs";
@@ -58,6 +66,9 @@ function merge(prefs: unknown): Prefs {
     ...p,
     ma: { ...DEFAULT_PREFS.ma, ...(p.ma ?? {}) },
     period,
+    capital: Number(p.capital) > 0 ? Number(p.capital) : DEFAULT_PREFS.capital,
+    riskPct: Number(p.riskPct) > 0 ? Number(p.riskPct) : DEFAULT_PREFS.riskPct,
+    theme: p.theme === "light" ? "light" : "dark",
   };
 }
 
