@@ -293,6 +293,8 @@ export default function PriceChart({
     });
     if (!chart) return;
     chartRef.current = chart;
+    // 預設右側會留 80px 空白（x 軸還會標出未來日期），縮到只留一點呼吸空間
+    chart.setOffsetRightDistance(12);
 
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(el);
