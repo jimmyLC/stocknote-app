@@ -8,7 +8,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `PRO
 - **Personal, non-commercial, login-gated.** Not open to the public for now; every route requires sign-in. Non-commercial only (this is what the FinMind free tier allows).
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
-- Repo: github.com/jimmyLC/stocknote-app (private), branch `main`.
+- Repo: github.com/jimmyLC/stocknote-app, branch `main`. Open source (MIT). Never commit secrets, tokens, account/database IDs or personal emails.
 - **Status: M1–M6 live at https://stock.example.com.** Branch `feat/stocknote-notes-panel` (not merged yet, 2026-10-15) adds: rename to **StockNote**, right-side recent-notes panel, global indices (US/JP/KR), 市場數據 page (三大法人, 融資餘額, 融資維持率 estimate), 交易計畫 (stop-loss/take-profit plans with alerts and stats), UI redesign with light/dark toggle, local login bypass. See `PROJECT_STATUS.md`.
 
 ## Working with the owner (Jimmy)
@@ -108,14 +108,14 @@ Every `/api/*` route except `/api/auth/*` and `/api/health` requires a session (
 Secrets / vars: `BETTER_AUTH_SECRET` (Worker secret), `BETTER_AUTH_URL` (plain `var` in `wrangler.jsonc`), `FINMIND_TOKEN` (optional Worker secret; raises FinMind's free limit 300 → 600 req/hr). Never print secrets.
 
 ## Deploying
-- **Site:** push to `main` → GitHub Actions builds and runs `npx wrangler deploy` (~30 s; needs the repo secret `CLOUDFLARE_API_TOKEN`). Check with `gh run list -R jimmyLC/stocknote-app -L1`.
+- **Site:** push to `main` → GitHub Actions builds and runs `npx wrangler deploy` (~30 s; needs repo secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `D1_DATABASE_ID` and repo variable `APP_DOMAIN`). Check with `gh run list -R jimmyLC/stocknote-app -L1`.
 - **D1 migrations:** `npx wrangler d1 migrations apply stocknote-db --remote` (also run automatically in CI before deploy).
 - **One-time bootstrap** (account-level; do only with Jimmy's approval):
-  1. `npx wrangler d1 create stocknote-db` → paste the returned `database_id` into `wrangler.jsonc` (currently `REPLACE_WITH_D1_DATABASE_ID`).
+  1. `npx wrangler d1 create stocknote-db` → paste the returned `database_id` into `wrangler.jsonc` (the committed file holds a zero-UUID placeholder; CI swaps in the real id).
   2. `npx wrangler secret put BETTER_AUTH_SECRET` (≥ 32 chars).
   3. `npx wrangler deploy` — creates the Worker and, via `routes: [{ pattern: "stock.example.com", custom_domain: true }]`, the DNS record + certificate automatically.
   4. Add the repo secret `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit + Workers Routes:Edit + D1:Edit + Zone:Read) so CI can deploy.
-- `BETTER_AUTH_URL` is a plain `var` in `wrangler.jsonc` (`https://stock.example.com`); `.dev.vars` overrides it locally.
+- `BETTER_AUTH_URL` is a plain `var` in `wrangler.jsonc` (`https://stock.example.com`); CI replaces the host `stock.example.com` with the repo variable `APP_DOMAIN`; `.dev.vars` overrides it locally.
 
 ## Design system
 `src/style.css` holds all tokens on `:root[data-theme=dark|light]`; dark is default, toggled in the footer and stored in prefs (index.html applies it before paint). One accent only (brass `--accent`); red-up/green-down is the TW convention, so the accent is never red/green. Icons are inline SVG in `src/components/Icon.tsx` (no emoji). `PriceChart` takes a `theme` prop and re-styles klinecharts; the chart locale is a registered `zh-TW`. Under 720 px the page scrolls and the chart keeps ≥ 420 px height; indicator toggles collapse behind 「指標」.

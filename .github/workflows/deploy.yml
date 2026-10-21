@@ -19,15 +19,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Fill in deploy settings
+        # wrangler.jsonc 只放佔位值，真正的資料庫 ID 與網域在這裡從 GitHub 設定帶入。
+        run: |
+          sed -i \
+            -e "s|00000000-0000-0000-0000-000000000000|$D1_DATABASE_ID|" \
+            -e "s|stock.example.com|$APP_DOMAIN|g" wrangler.jsonc
+        env:
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN }}
       - name: Build (type-check + bundle)
         run: npm run build
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply stocknote-db --remote
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: <CLOUDFLARE_ACCOUNT_ID>
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy to Cloudflare
         run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: <CLOUDFLARE_ACCOUNT_ID>
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

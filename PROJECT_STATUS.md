@@ -29,9 +29,9 @@
 - 後端：Cloudflare Worker（Hono）＋ D1；`/api/health`、`/api/me`、`/api/auth/*` 已通。
 - 登入：Better Auth（D1），註冊／登入／登出／`/api/me` **線上實測通過**。
 - 資料庫：`migrations/0001_better_auth.sql`（Better Auth 的四張表），本機與遠端 D1 皆已套用。
-- 部署：`wrangler.jsonc`（Worker ＋ 靜態資源 ＋ D1 ＋ 自訂網域）、GitHub Actions。線上 D1 id `<D1_DATABASE_ID>`（APAC）。
+- 部署：`wrangler.jsonc`（Worker ＋ 靜態資源 ＋ D1 ＋ 自訂網域）、GitHub Actions。D1 在 APAC 區。
 - CI：GitHub Actions 已設好 secret `CLOUDFLARE_API_TOKEN`，推 `main` 會自動部署（已驗證成功、全綠）。
-- 帳號：已建立單一帳號 `owner@example.com`（標記為已驗證），並在 `worker/auth.ts` 關閉公開註冊。
+- 帳號：已建立單一帳號（標記為已驗證），並在 `worker/auth.ts` 關閉公開註冊。
 
 ## M2 已完成並上線
 - **資料層（Worker）**：`GET /api/ohlcv?market=&symbol=&from=&to=`

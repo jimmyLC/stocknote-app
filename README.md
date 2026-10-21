@@ -4,7 +4,7 @@
 
 看加權指數日線的 K 線、均線、成交量、MACD、KD，在圖上點某一天寫下自己的交易日誌，另外可以收藏想追蹤的證券。目前先做加權指數，架構保留之後看台股個股、再到美股。
 
-> **狀態：** 已上線 https://stock.example.com，進度見 `PROJECT_STATUS.md`。
+> **狀態：** 開源（MIT），進度見 `PROJECT_STATUS.md`。
 
 ## 功能（規劃）
 
@@ -37,6 +37,18 @@ npm run deploy     # 打包 + wrangler deploy
 - `AGENTS.md` — 給 AI coding agent 的技術說明與規則
 - `PROJECT_STATUS.md` — 專案進度、里程碑、待辦（繁體中文）
 
+## 自己架一份
+
+需要 Cloudflare 帳號（Workers + D1）。
+
+1. `npx wrangler login`，再 `npx wrangler d1 create stocknote-db`，把回傳的 `database_id` 填進 `wrangler.jsonc`（取代全 0 的佔位值）。
+2. 把 `wrangler.jsonc` 裡的 `stock.example.com` 換成你的網域。
+3. `npx wrangler secret put BETTER_AUTH_SECRET`（至少 32 字元），再 `npm run deploy`。
+4. 預設關閉公開註冊：本機把 `ALLOW_SIGNUP=1` 寫進 `.dev.vars` 建立帳號即可。
+5. 想用 GitHub Actions 自動部署：新增 repo secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`、`D1_DATABASE_ID`，以及 repo variable `APP_DOMAIN`。
+
+**安全提醒：** 不要把 `.dev.vars`、token、帳號 ID 提交進 git（`.gitignore` 已擋 `.dev.vars` 與 `.env*`）。
+
 ## 授權與聲明
 
-個人非商業使用。資料來源：FinMind／臺灣證券交易所。**本工具僅供參考，不構成投資建議。**
+程式碼以 MIT 授權釋出，見 `LICENSE`。資料來源各有使用條款（例如 FinMind 免費方案僅限非商業用途），請自行遵守。**本工具僅供參考，不構成投資建議。**

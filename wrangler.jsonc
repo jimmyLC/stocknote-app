@@ -1,8 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "stocknote-app",
-  // 固定使用 Jimmy 自己的 Cloudflare 帳號。
-  "account_id": "<CLOUDFLARE_ACCOUNT_ID>",
+  // 帳號 ID 不寫在檔案裡：本機用 `wrangler login`，CI 用環境變數 CLOUDFLARE_ACCOUNT_ID。
   "main": "./worker/index.ts",
   "compatibility_date": "2026-10-01",
   // Better Auth 需要 AsyncLocalStorage

@@ -12,7 +12,8 @@ function createAuth(env: Env) {
       env.BETTER_AUTH_URL,
       "http://localhost:5173",
       "http://127.0.0.1:5173",
-      "http://stock.example.com",
+      "http://localhost:8787",
+      "http://127.0.0.1:8787",
     ],
     emailAndPassword: {
       enabled: true,

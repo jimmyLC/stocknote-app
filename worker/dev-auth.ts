@@ -1,7 +1,7 @@
 import type { Env } from "./types";
 
 // 本機開發跳過登入：.dev.vars 設 DEV_SKIP_AUTH=1 才會開。
-// 雙重保險：BETTER_AUTH_URL 必須是 localhost（正式環境是 https://stock.example.com，永遠不會生效）。
+// 雙重保險：BETTER_AUTH_URL 必須是 localhost（正式環境是 https，永遠不會生效）。
 export function devSkipAuth(env: Env): boolean {
   const on = env.DEV_SKIP_AUTH === "1" || env.DEV_SKIP_AUTH === "true";
   return on && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(env.BETTER_AUTH_URL);
