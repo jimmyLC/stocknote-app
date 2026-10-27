@@ -1,6 +1,6 @@
 # AGENTS.md — stocknote-app（台股技術分析＋交易日誌）
 
-Guide for AI coding agents (Codex, Claude Code) working in this repository. `PROJECT_STATUS.md` (Traditional Chinese) is the owner-facing status and backlog; if the docs and the code ever disagree, trust the code and fix the docs.
+Guide for AI coding agents (Codex, Claude Code) working in this repository. `PROGRESS.md` (Traditional Chinese) is the owner-facing status and backlog; if the docs and the code ever disagree, trust the code and fix the docs.
 
 ## What this is
 **stocknote-app** is a personal Taiwan-stock web app / PWA. It shows the **Taiwan Stock Exchange Weighted Index (加權指數, `TW:0000`)** with a daily technical-analysis chart (candlesticks + moving averages + volume + MACD + KD), keeps a **private trading journal** (one note per security per trading day), and manages a **favorites** list. It is built to grow from the index to individual Taiwan stocks, and later to US stocks (V2/V3).
@@ -9,7 +9,7 @@ Guide for AI coding agents (Codex, Claude Code) working in this repository. `PRO
 - **Cloudflare-first:** a single **Cloudflare Worker** serving the built static PWA **and** the `/api/*` routes (Workers static assets + `run_worker_first: ["/api/*"]`), backed by **Cloudflare D1** + Cache API.
 - Planned URL: https://stock.example.com (Cloudflare Pages custom domain; the zone `example.com` is already on Cloudflare).
 - Repo: github.com/jimmyLC/stocknote-app, branch `main`. Open source (MIT). Never commit secrets, tokens, account/database IDs or personal emails.
-- **Status: M1–M6 live at https://stock.example.com.** Branch `feat/stocknote-notes-panel` (not merged yet, 2026-10-15) adds: rename to **StockNote**, right-side recent-notes panel, global indices (US/JP/KR), 市場數據 page (三大法人, 融資餘額, 融資維持率 estimate), 交易計畫 (stop-loss/take-profit plans with alerts and stats), UI redesign with light/dark toggle, local login bypass. See `PROJECT_STATUS.md`.
+- **Status: M1–M6 live at https://stock.example.com.** Branch `feat/stocknote-notes-panel` (not merged yet, 2026-10-15) adds: rename to **StockNote**, right-side recent-notes panel, global indices (US/JP/KR), 市場數據 page (三大法人, 融資餘額, 融資維持率 estimate), 交易計畫 (stop-loss/take-profit plans with alerts and stats), UI redesign with light/dark toggle, local login bypass. See `PROGRESS.md`.
 
 ## Working with the owner (Jimmy)
 - Jimmy writes **Traditional Chinese (Taiwan)** and is **non-technical about infrastructure**. Answer in Traditional Chinese, explain choices plainly, and say what you verified and what you did **not**.

@@ -4,7 +4,7 @@
 
 看加權指數日線的 K 線、均線、成交量、MACD、KD，在圖上點某一天寫下自己的交易日誌，另外可以收藏想追蹤的證券。目前先做加權指數，架構保留之後看台股個股、再到美股。
 
-> **狀態：** 開源（MIT），進度見 `PROJECT_STATUS.md`。
+> **狀態：** 開源（MIT），進度見 `PROGRESS.md`。
 
 ## 功能（規劃）
 
@@ -35,7 +35,7 @@ npm run deploy     # 打包 + wrangler deploy
 ## 文件
 
 - `AGENTS.md` — 給 AI coding agent 的技術說明與規則
-- `PROJECT_STATUS.md` — 專案進度、里程碑、待辦（繁體中文）
+- `PROGRESS.md` — 專案進度、里程碑、待辦（繁體中文）
 
 ## 自己架一份
 
